@@ -3,10 +3,12 @@ import { useDashboard } from "@/hooks/useDashboard";
 import MetricCard from "@/components/MetricCard";
 import Chart from "@/components/Chart";
 import AlertsPanel from "@/components/AlertsPanel";
+import { Button } from "@/components/ui/button";
+import { Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
-  const { leituras, ultimosValores, processarLeitura } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes } = useDashboard();
   useWebSocket(processarLeitura);
 
   const metricas = [
@@ -18,6 +20,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant={acquiring ? "destructive" : "default"}
+          onClick={() => setAcquiring(!acquiring)}
+          className="gap-2"
+        >
+          {acquiring ? (
+            <><Square className="h-4 w-4" /> Parar</>
+          ) : (
+            <><Play className="h-4 w-4" /> Iniciar</>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={resetAlarmes}
+          className="gap-2"
+        >
+          <RotateCcw className="h-4 w-4" /> Reset Alarmes
+        </Button>
+      </div>
+
       <div className="grid grid-cols-4 gap-4">
         {metricas.map((m) => (
           <MetricCard
