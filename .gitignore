@@ -15,8 +15,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Node.js / Turborepo
+# Node
 node_modules/
-dist/
 .turbo/
-.env
+dist/

@@ -39,7 +39,7 @@ export default function Relatorio() {
   };
 
   return (
-    <Card className="max-w-lg mx-auto mt-12 border-0 shadow-sm">
+    <Card className="max-w-lg mx-auto mt-12 ring-0 shadow-sm border-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileDown className="h-5 w-5" />

@@ -6,18 +6,13 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces",
     "dev:server": "npm run dev -w @transformer-monitor/server",
     "dev:web": "npm run dev -w @transformer-monitor/web",
     "build": "npm run build -w @transformer-monitor/server && npm run build -w @transformer-monitor/web",
     "start": "node apps/server/dist/main.js",
     "lint": "npm run lint --workspaces"
   },
-  "packageManager": "yarn@1.22.22",
   "devDependencies": {
     "typescript": "^5.4.0"
-  },
-  "dependencies": {
-    "tailwindcss-animate": "^1.0.7"
   }
 }

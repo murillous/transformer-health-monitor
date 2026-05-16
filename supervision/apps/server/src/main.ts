@@ -18,7 +18,7 @@ app.use("/api/relatorio", relatorioRouter);
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 // Serve frontend build in production
-const distPath = path.resolve(__dirname, "../../web/dist");
+const distPath = path.resolve(__dirname, "../web/dist");
 app.use(express.static(distPath));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));

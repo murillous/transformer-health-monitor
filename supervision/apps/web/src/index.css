@@ -1,6 +1,5 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/montserrat";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

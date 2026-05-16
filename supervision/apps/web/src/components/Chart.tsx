@@ -50,7 +50,7 @@ export default function Chart({ titulo, series }: Props) {
   }
 
   return (
-    <Card className="border-0 shadow-sm">
+    <Card className="ring-0 shadow-sm border-0">
       <CardHeader>
         <CardTitle className="text-sm">{titulo}</CardTitle>
       </CardHeader>

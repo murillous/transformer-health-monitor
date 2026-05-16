@@ -14,7 +14,7 @@ export default function MetricCard({ titulo, topico, leitura }: Props) {
   const sev = grandeza && leitura ? avaliarSeveridade(grandeza, leitura.valor) : "ok";
 
   return (
-    <Card className="border-0 shadow-sm">
+    <Card className="ring-0 shadow-sm border-0">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">{titulo}</span>
