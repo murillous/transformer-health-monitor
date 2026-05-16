@@ -78,7 +78,8 @@
     --sidebar-ring: oklch(0.56 0.021 213.5)
   }
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+    outline-color: var(--ring);
   }
   body {
     @apply bg-background text-foreground;

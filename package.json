@@ -8,10 +8,17 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
+    "start": "node apps/server/dist/main.js",
+    "dev:server": "npm run dev -w @transformer-monitor/server",
+    "dev:web": "npm run dev -w @transformer-monitor/web",
     "lint": "turbo lint"
   },
+  "packageManager": "yarn@1.22.22",
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "tailwindcss-animate": "^1.0.7"
   }
 }
