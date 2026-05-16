@@ -10,7 +10,7 @@ export class MQTTSubscriber extends EventEmitter {
   private client: mqtt.MqttClient | null = null;
 
   connect(brokerUrl = "mqtt://localhost:1883"): void {
-    this.client = mqtt.connect(brokerUrl);
+    this.client = mqtt.connect(brokerUrl, { reconnectPeriod: 0 });
 
     this.client.on("connect", () => {
       console.log(`MQTT conectado em ${brokerUrl}`);

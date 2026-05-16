@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useDashboard } from "@/hooks/useDashboard";
@@ -12,6 +13,15 @@ import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 export default function Dashboard() {
   const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes } = useDashboard();
   useWebSocket(processarLeitura);
+
+  const toggleAquisicao = useCallback(async () => {
+    if (acquiring) {
+      await fetch("/api/simular/parar", { method: "POST" });
+    } else {
+      await fetch("/api/simular/iniciar", { method: "POST" });
+    }
+    setAcquiring(!acquiring);
+  }, [acquiring]);
 
   const V1 = 220;
   const V2 = 12;
@@ -57,7 +67,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <Button
               variant={acquiring ? "destructive" : "default"}
-              onClick={() => setAcquiring(!acquiring)}
+              onClick={toggleAquisicao}
               className="gap-2"
             >
               {acquiring ? (
