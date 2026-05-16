@@ -8,7 +8,7 @@
 
 ## Visão Geral
 
-Sistema embarcado de monitoramento contínuo para transformadores elétricos, capaz de detectar falhas em desenvolvimento antes que se tornem críticas. O sistema coleta grandezas elétricas, térmicas e mecânicas em tempo real, transmite os dados via MQTT e exibe diagnósticos automáticos em um painel supervisório Python.
+Sistema embarcado de monitoramento contínuo para transformadores elétricos, capaz de detectar falhas em desenvolvimento antes que se tornem críticas. O sistema coleta grandezas elétricas, térmicas e mecânicas em tempo real, transmite os dados via MQTT e exibe diagnósticos automáticos em um painel supervisório.
 
 **Problema resolvido:** sistemas comerciais de monitoramento custam entre R$ 15.000 e R$ 80.000. Esta solução utiliza hardware acessível (menos de R$ 200 em componentes) com capacidade equivalente de detecção para instalações de pequeno e médio porte.
 
@@ -18,28 +18,28 @@ Sistema embarcado de monitoramento contínuo para transformadores elétricos, ca
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  CAMADA FÍSICA                       │
+│                  CAMADA FÍSICA                      │
 │   SCT-013 (P)  SCT-013 (S)  DS18B20  MPU6050        │
 └──────────────────────┬──────────────────────────────┘
                        │ sinais analógicos e digitais
 ┌──────────────────────▼──────────────────────────────┐
-│            CAMADA EMBARCADA — ESP32                  │
+│            CAMADA EMBARCADA — ESP32                 │
 │         ADC · FFT · Inrush · ΔT · JSON              │
 └──────────────────────┬──────────────────────────────┘
                        │ WiFi · MQTT
 ┌──────────────────────▼──────────────────────────────┐
-│          CAMADA DE COMUNICAÇÃO — MQTT                │
-│              Broker Mosquitto                        │
+│          CAMADA DE COMUNICAÇÃO — MQTT               │
+│              Broker Mosquitto                       │
 └──────────────────────┬──────────────────────────────┘
                        │ paho-mqtt
 ┌──────────────────────▼──────────────────────────────┐
-│         CAMADA DE APLICAÇÃO — IHM Python             │
-│       Dashboard · Alertas · Lógica de diagnóstico    │
+│         CAMADA DE APLICAÇÃO — IHM Python            │
+│       Dashboard · Alertas · Lógica de diagnóstico   │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│                  SAÍDAS                              │
-│         Relatório PDF · Datalogger CSV               │
+│                  SAÍDAS                             │
+│         Relatório PDF · Datalogger CSV              │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -47,26 +47,49 @@ Sistema embarcado de monitoramento contínuo para transformadores elétricos, ca
 
 ## Estrutura do Projeto
 
+O firmware é organizado em módulos independentes — cada sensor tem seu próprio par `.h`/`.cpp` para facilitar manutenção, testes e a divisão de trabalho entre os integrantes da equipe.
+
 ```
 diagnostico_transformador/
 ├── src/
-│   └── main.cpp              # Firmware principal (Arduino/ESP32)
-├── include/                  # Headers locais
+│   ├── main.cpp              # Orquestração — setup() e loop()
+│   ├── config.h              # Pinos, calibração ADC, tópicos MQTT
+│   ├── publicador.h          # Camada de transporte abstrata
+│   ├── publicador.cpp        #   Serial no Proteus, MQTT no ESP32
+│   ├── mpu6050.h             # Acelerômetro/giroscópio (I²C)
+│   ├── mpu6050.cpp
+│   ├── ds18b20.h             # Temperatura (OneWire) com cache
+│   ├── ds18b20.cpp
+│   ├── sct013.h              # Corrente RMS (ADC)
+│   └── sct013.cpp
+├── include/                  # Headers externos (vazio por padrão)
 ├── lib/                      # Bibliotecas locais
 ├── proteus/
 │   ├── diagnostico.pdsprj    # Projeto de simulação Proteus
-│   └── diagnostico.hex       # Binário gerado para simulação
+│   └── diagnostico.hex       # Binário compilado para simulação
 ├── ihm/
 │   ├── dashboard.py          # Interface gráfica (Streamlit/NiceGUI)
 │   ├── mqtt_client.py        # Subscriber MQTT com fila de dados
 │   ├── processor.py          # Lógica de diagnóstico e alertas
-│   └── datalogger.py         # Gravação CSV e geração de PDF
+│   ├── datalogger.py         # Gravação CSV e geração de PDF
+│   └── ponte_serial_mqtt.py  # Bridge Serial→MQTT para demo Proteus
 ├── docs/
 │   ├── projeto_transformador.tex  # Documentação técnica LaTeX
 │   └── projeto_transformador.pdf  # PDF compilado
 ├── platformio.ini
 └── README.md
 ```
+
+**Responsabilidades por módulo:**
+
+| Módulo | Faz | Quem cuida |
+|---|---|---|
+| `config.h` | Define pinos e calibração — detecta plataforma automaticamente | P1 |
+| `mpu6050` | Inicialização I²C, leitura de aceleração/giro, conversão para g e °/s | P2 |
+| `ds18b20` | OneWire + cache de última leitura válida (tolerância a falhas) | P2 |
+| `sct013` | Amostragem ADC + cálculo RMS | P3 |
+| `publicador` | Abstrai transporte — Serial no Proteus, MQTT no ESP32 | P4 |
+| `main.cpp` | Amarra os módulos no loop não-bloqueante | — |
 
 ---
 
@@ -79,7 +102,7 @@ diagnostico_transformador/
 | SCT-013-030 | Corrente primário (220V) — clamp não invasivo | GPIO34 (ADC) |
 | SCT-013-030 | Corrente secundário (12V) — clamp não invasivo | GPIO35 (ADC) |
 | DS18B20 blindado | Temperatura do núcleo | GPIO4 (OneWire) |
-| MPU6050 | Vibração mecânica do chassi | GPIO21/22 (I2C) |
+| MPU6050 | Vibração mecânica do chassi | GPIO21/22 (I²C) |
 
 ### Componentes de Simulação (Arduino UNO — Proteus — entrega 18/05)
 
@@ -94,12 +117,9 @@ diagnostico_transformador/
 
 ## Como o Transformador é Simulado
 
-O SCT-013 é um transformador de corrente não invasivo que, na prática, produz uma
-corrente proporcional à corrente que circula no fio monitorado. Essa corrente é convertida
-em tensão por um resistor burden e condicionada para o ADC.
+O SCT-013 é um transformador de corrente não invasivo que, na prática, produz uma corrente proporcional à corrente que circula no fio monitorado. Essa corrente é convertida em tensão por um resistor burden e condicionada para o ADC.
 
-Como o Proteus não possui o SCT-013, o sinal já condicionado que chegaria ao ADC
-é reproduzido diretamente por um circuito gerador:
+Como o Proteus não possui o SCT-013, o sinal já condicionado que chegaria ao ADC é reproduzido diretamente por um circuito gerador:
 
 ```
                     ┌── R_top (10kΩ) ── 5V
@@ -126,14 +146,39 @@ VSINE ── R(100Ω) ── C(10µF) ── nó central ──── A0 / A1
 | A0 — Primário | 1,0 V | ~0,707 V | Corrente maior no lado 220V |
 | A1 — Secundário | 0,5 V | ~0,354 V | Corrente menor no lado 12V |
 
-A diferença de amplitude entre os canais simula o fato de que o primário (220V)
-induz mais corrente no SCT-013 do que o secundário (12V), proporcionalmente
-à relação de transformação do equipamento monitorado.
+A diferença de amplitude entre os canais simula o fato de que o primário (220V) induz mais corrente no SCT-013 do que o secundário (12V), proporcionalmente à relação de transformação do equipamento monitorado.
 
-**Por que funciona:** o cálculo RMS no firmware extrai exatamente o que importa
-para o diagnóstico — a magnitude eficaz do sinal de corrente. No hardware físico,
-o mesmo código lê o sinal real do SCT-013. A única diferença entre simulação e
-realidade é a origem do sinal no pino analógico.
+**Por que funciona:** o cálculo RMS no firmware extrai exatamente o que importa para o diagnóstico — a magnitude eficaz do sinal de corrente. No hardware físico, o mesmo código lê o sinal real do SCT-013. A única diferença entre simulação e realidade é a origem do sinal no pino analógico.
+
+---
+
+## Estratégia MQTT — Simulação vs Hardware Físico
+
+O Proteus não simula WiFi nem stack TCP/IP, então **não dá para falar MQTT de verdade na simulação**. O projeto contorna isso com uma **camada de transporte abstrata** (`publicador.h/cpp`) que apresenta a mesma interface nos dois ambientes:
+
+```cpp
+publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
+```
+
+**No Proteus (Arduino UNO):** imprime no Serial em formato compatível com MQTT.  
+**No ESP32 físico:** publica no broker MQTT real via PubSubClient.
+
+A seleção entre os dois caminhos é automática, controlada por `#if defined(ESP32)`. O código de aquisição e processamento é idêntico nos dois ambientes — só a camada de saída muda.
+
+**Saída no Virtual Terminal (Proteus):**
+
+```
+[MQTT] transformador/nucleo/temperatura -> {"ts":4,"valor":26.5000,"unidade":"C"}
+[MQTT] transformador/primario/corrente -> {"ts":4,"valor":0.6914,"unidade":"Vrms"}
+[MQTT] transformador/secundario/corrente -> {"ts":4,"valor":0.3461,"unidade":"Vrms"}
+[MQTT] transformador/vibracao/aceleracao -> {"ts":4,"valor":0.0000,"unidade":"g"}
+```
+
+Esse é literalmente o payload que será publicado no broker no hardware físico. Toda a estrutura — hierarquia de tópicos, formato JSON, timestamp — está validada já na simulação.
+
+### Ponte Serial→MQTT para demonstrações
+
+Para apresentar o sistema completo durante a entrega da simulação (18/05), o script `ihm/ponte_serial_mqtt.py` lê a porta COM virtual do Proteus, extrai os payloads das linhas `[MQTT]` e republica no broker Mosquitto local. Isso permite demonstrar **simulação → broker MQTT → IHM Python** funcionando ponta a ponta, mesmo sem WiFi.
 
 ---
 
@@ -148,21 +193,34 @@ realidade é a origem do sinal no pino analógico.
 | MPU6050 SCL | A5 | GPIO22 | Wire.h funciona igual nos dois |
 | Serial TX | D1/TXD | GPIO1 | Virtual Terminal no Proteus |
 
+> **Nota:** A troca entre plataformas não exige modificações manuais no código. O arquivo `config.h` detecta a plataforma de compilação via `#if defined(ESP32)` e ajusta automaticamente `VREF` (5V → 3,3V), `ADC_RES` (1023 → 4095) e `BIAS` (2,5V → 1,65V).
+
 ---
 
 ## Tópicos MQTT
 
 | Tópico | Dado | Unidade |
 |---|---|---|
-| `transformador/primario/corrente` | Corrente RMS primário | A |
+| `transformador/primario/corrente` | Corrente RMS primário | Vrms |
 | `transformador/primario/inrush` | Flag + valor de pico | A |
-| `transformador/secundario/corrente` | Corrente RMS secundário | A |
+| `transformador/secundario/corrente` | Corrente RMS secundário | Vrms |
 | `transformador/nucleo/temperatura` | Temperatura absoluta | °C |
 | `transformador/nucleo/delta_t` | Gradiente térmico | °C |
+| `transformador/vibracao/aceleracao` | Aceleração eixo Z | g |
 | `transformador/vibracao/fft_120hz` | Amplitude em 120Hz | g |
 | `transformador/vibracao/fft_240hz` | Amplitude em 240Hz | g |
 | `transformador/status/alarme` | JSON estruturado | — |
 | `transformador/status/heartbeat` | Timestamp Unix | s |
+
+**Formato do payload:**
+
+```json
+{
+  "ts": 1748000000,
+  "valor": 26.5,
+  "unidade": "C"
+}
+```
 
 ---
 
@@ -175,9 +233,13 @@ realidade é a origem do sinal no pino analógico.
 
 ```ini
 ; platformio.ini
+[env:uno]
+platform = atmelavr
+board = uno
+framework = arduino
 lib_deps =
-    milesburton/DallasTemperature @ ^3.11.0
     paulstoffregen/OneWire @ ^2.3.8
+    milesburton/DallasTemperature @ ^3.11.0
     bblanchon/ArduinoJson @ ^7.0.0
     kosme/arduinoFFT @ ^2.0.1
 ```
@@ -198,45 +260,51 @@ lib_deps =
 
 ```
 ===================================
-   DIAGNOSTICO - PROTEUS
+   DIAGNOSTICO DE TRANSFORMADOR
 ===================================
-[MPU6050] WHO_AM_I: 0x68 --> OK
-[DS18B20] Sensores: 1
-[DS18B20] Temp. inicial: 27.0 C
-[SCT-013] A0=primario  A1=secundario -- OK
+[MPU6050] OK
+[DS18B20] Sensores detectados: 1
+[SCT-013] A0=primario  A1=secundario
 -----------------------------------
-Acel (g)   X:-1.00  Y:0.00  Z:0.00
-Giro (g/s) X:0.0    Y:0.0   Z:0.0
-Temp (C):  27.0
-SCT Prim (Vrms): 0.6914
-SCT Sec  (Vrms): 0.3461
+[MQTT] transformador/primario/corrente -> {"ts":4,"valor":0.6914,"unidade":"Vrms"}
+[MQTT] transformador/secundario/corrente -> {"ts":4,"valor":0.3461,"unidade":"Vrms"}
+[MQTT] transformador/vibracao/aceleracao -> {"ts":4,"valor":0.0000,"unidade":"g"}
+[MQTT] transformador/nucleo/temperatura -> {"ts":4,"valor":26.5000,"unidade":"C"}
 -----------------------------------
 ```
-
-> **Nota:** O eixo X do acelerômetro aparece como -1.00 com Roll=0 — limitação
-> conhecida do modelo `.dll` da biblioteca ElectronicTree. Não impacta o diagnóstico,
-> pois a FFT analisa variações do sinal, não o valor absoluto em repouso.
 
 ---
 
 ## Como Rodar — Hardware Físico (ESP32)
 
-Antes de compilar para o ESP32, aplicar as seguintes alterações em `src/main.cpp`:
+### Compilação
 
-```cpp
-// Trocar:
-#define VREF          5.0
-#define ADC_RESOLUCAO 1023.0
+Adicionar o ambiente ESP32 ao `platformio.ini`:
 
-// Por:
-#define VREF          3.3
-#define ADC_RESOLUCAO 4095.0
+```ini
+[env:esp32]
+platform = espressif32
+board = esp32dev
+framework = arduino
+lib_deps =
+    paulstoffregen/OneWire @ ^2.3.8
+    milesburton/DallasTemperature @ ^3.11.0
+    knolleary/PubSubClient @ ^2.8
+    bblanchon/ArduinoJson @ ^7.0.0
+    kosme/arduinoFFT @ ^2.0.1
 ```
 
-Remover o `delay(100)` dentro de `lerTemperatura()` e substituir por leitura
-assíncrona com `millis()`.
+No rodapé do VSCode, alterne entre `env:uno` (simulação) e `env:esp32` (físico). **Nenhuma alteração manual no código é necessária** — o `config.h` detecta a plataforma automaticamente.
 
-Instalar e iniciar o broker Mosquitto:
+Antes de gravar no ESP32, ajustar as credenciais WiFi e o IP do broker em `publicador.cpp`:
+
+```cpp
+constexpr const char* WIFI_SSID   = "SUA_REDE";
+constexpr const char* WIFI_PASS   = "SUA_SENHA";
+constexpr const char* MQTT_BROKER = "192.168.1.100";
+```
+
+### Broker Mosquitto
 
 ```bash
 # Ubuntu/Debian
@@ -244,9 +312,8 @@ sudo apt install mosquitto mosquitto-clients
 echo "listener 1883\nallow_anonymous true" | sudo tee /etc/mosquitto/conf.d/local.conf
 sudo systemctl restart mosquitto
 
-# Testar publicação
-mosquitto_pub -h localhost -t "transformador/nucleo/temperatura" \
-  -m '{"ts":1000,"valor":45.2,"unidade":"C"}'
+# Verificar recebimento dos dados do ESP32
+mosquitto_sub -h localhost -t "transformador/#" -v
 ```
 
 ---
@@ -256,9 +323,10 @@ mosquitto_pub -h localhost -t "transformador/nucleo/temperatura" \
 | Limitação | Impacto | Solução no hardware físico |
 |---|---|---|
 | Eixo X do MPU6050 travado em -1.00 | Nenhum — FFT usa variação, não valor absoluto | Sensor real funciona corretamente |
-| DS18B20 requer `delay(100)` explícito | Viola princípio não-bloqueante | Removido no firmware do ESP32 |
+| DS18B20 com leituras intermitentes | Mitigado por cache da última leitura válida | Cache mantido como proteção contra glitches OneWire reais |
+| DS18B20 requer `delay()` explícito | Viola princípio não-bloqueante na simulação | Substituído por máquina de estados com `millis()` |
 | SCT-013 substituído por VSINE | Sinal sintético, sem ruído real | Sensor real com circuito de condicionamento |
-| Sem comunicação MQTT no Proteus | IHM Python não recebe dados da simulação | ESP32 com WiFi resolve nativamente |
+| Sem MQTT real no Proteus | Mitigado pela camada `publicador` + ponte serial→MQTT | ESP32 publica direto no broker via WiFi |
 
 ---
 
@@ -267,10 +335,10 @@ mosquitto_pub -h localhost -t "transformador/nucleo/temperatura" \
 | Pessoa | Responsabilidade | Entrega verificável |
 |---|---|---|
 | P1 — Hardware | Circuito físico, condicionamento SCT-013, pinagem ESP32 | Sinal condicionado mensurável no osciloscópio |
-| P2 — Firmware Base | Código não-bloqueante, DS18B20, SCT-013, MPU6050 | Leituras estáveis no Serial Monitor sem `delay()` |
-| P3 — DSP & Algoritmos | FFT 120Hz, detecção Inrush, gradiente ΔT | Espectro vibracional e flag de Inrush funcionando |
-| P4 — IoT & MQTT | Broker Mosquitto, PubSubClient, JSON com timestamp | ESP32 publicando nos tópicos, testável com `mosquitto_sub` |
-| P5 — IHM Python | Dashboard, gráficos em tempo real, alertas LED virtuais | Painel funcionando com dados reais do broker |
+| P2 — Firmware Base | Módulos `mpu6050`, `ds18b20`, código não-bloqueante | Leituras estáveis no Virtual Terminal sem `delay()` no loop |
+| P3 — DSP & Algoritmos | Módulo `sct013`, FFT 120Hz, detecção Inrush, gradiente ΔT | Espectro vibracional e flag de Inrush funcionando |
+| P4 — IoT & MQTT | Módulo `publicador`, broker Mosquitto, JSON com timestamp | ESP32 publicando nos tópicos, testável com `mosquitto_sub` |
+| P5 — IHM Python | Dashboard, subscriber MQTT, alertas LED virtuais | Painel funcionando com dados reais do broker |
 | P6 — Diagnóstico & Docs | Lógica fuzzy/limites, datalogger CSV, relatório PDF | Diagnósticos na IHM, CSV gravando, PDF exportável |
 
 ---
@@ -279,8 +347,8 @@ mosquitto_pub -h localhost -t "transformador/nucleo/temperatura" \
 
 | Data | Avaliação | Status |
 |---|---|---|
-| 18/05/2025 | 2ª Avaliação — Simulação Proteus | 🔄 Em andamento |
-| 15/06/2025 | 3ª Avaliação — Protótipo físico + IHM integrada | ⏳ Pendente |
+| 18/05/2026 | 2ª Avaliação — Simulação Proteus | 🔄 Em andamento |
+| 15/06/2026 | 3ª Avaliação — Protótipo físico + IHM integrada | ⏳ Pendente |
 
 ---
 
@@ -291,3 +359,4 @@ mosquitto_pub -h localhost -t "transformador/nucleo/temperatura" \
 - Espressif — [ESP32 Technical Reference Manual](https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf)
 - ElectronicTree — [MPU6050 Proteus Library](https://electronicstree.com/new-mpu6050-proteus-library/)
 - OpenEnergyMonitor — [CT Sensors: Interfacing with Arduino](https://learn.openenergymonitor.org/electricity-monitoring/ct-sensors/)
+- HiveMQ — [MQTT Essentials](https://www.hivemq.com/mqtt-essentials/)
