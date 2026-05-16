@@ -13,7 +13,7 @@ import { Activity, Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
-  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro } = useDashboard();
   useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
@@ -175,7 +175,7 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="alertas">
-          <Alertas historico={historicoAlertas} onLimpar={limparHistoricoAlertas} />
+          <Alertas />
         </TabsContent>
 
         <TabsContent value="relatorio">
