@@ -12,6 +12,7 @@
 | PDF        | Puppeteer (HTML → PDF)                  |
 | Validação  | Zod (shared package)                    |
 | Organização| Turborepo                               |
+| Preset     | Shadcn `b2DLVcgnT`                      |
 
 ## Arquitetura
 
