@@ -18,6 +18,8 @@ export const LIMITES: Record<string, { aviso: number; critico: number }> = {
   deltaT: { aviso: 15, critico: 25 },
   vibracao120hz: { aviso: 0.2, critico: 0.45 },
   correntePrimario: { aviso: 4.0, critico: 6.0 },
+  correnteSecundario: { aviso: 30, critico: 45 },
+  vibracao240hz: { aviso: 0.1, critico: 0.25 },
 };
 
 export function avaliarSeveridade(
@@ -37,6 +39,8 @@ export function mapearGrandeza(topico: string): string | null {
     [TOPICOS_MQTT.deltaT]: "deltaT",
     [TOPICOS_MQTT.vibracao120hz]: "vibracao120hz",
     [TOPICOS_MQTT.correntePrimario]: "correntePrimario",
+    [TOPICOS_MQTT.correnteSecundario]: "correnteSecundario",
+    [TOPICOS_MQTT.vibracao240hz]: "vibracao240hz",
   };
   return mapa[topico] ?? null;
 }
