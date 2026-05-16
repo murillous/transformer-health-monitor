@@ -11,6 +11,23 @@ export default function Dashboard() {
   const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes } = useDashboard();
   useWebSocket(processarLeitura);
 
+  const V1 = 220;
+  const V2 = 12;
+
+  const correntePPontos = leituras[TOPICOS_MQTT.correntePrimario] ?? [];
+  const correnteSPontos = leituras[TOPICOS_MQTT.correnteSecundario] ?? [];
+
+  const eficienciaPontos = correntePPontos
+    .map((pPrimario) => {
+      const pSecundario = correnteSPontos.find(
+        (s) => Math.abs(s.timestamp - pPrimario.timestamp) < 100
+      );
+      if (!pSecundario || pPrimario.valor === 0) return null;
+      const eficiencia = ((V2 * pSecundario.valor) / (V1 * pPrimario.valor)) * 100;
+      return { timestamp: pPrimario.timestamp, valor: Math.min(eficiencia, 100) };
+    })
+    .filter(Boolean) as { timestamp: number; valor: number }[];
+
   const metricas = [
     { titulo: "Temperatura", topico: TOPICOS_MQTT.temperaturaNucleo },
     { titulo: "ΔT", topico: TOPICOS_MQTT.deltaT },
@@ -96,6 +113,20 @@ export default function Dashboard() {
               nome: "240Hz",
               cor: "#8b5cf6",
               pontos: leituras[TOPICOS_MQTT.vibracao240hz] ?? [],
+            },
+          ]}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        <Chart
+          titulo="Rendimento (%)"
+          series={[
+            {
+              dataKey: "rendimento",
+              nome: "η",
+              cor: "#06b6d4",
+              pontos: eficienciaPontos,
             },
           ]}
         />
