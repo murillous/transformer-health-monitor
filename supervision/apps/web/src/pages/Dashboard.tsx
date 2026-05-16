@@ -40,14 +40,16 @@ export default function Dashboard() {
   return (
     <Tabs defaultValue="painel" className="min-h-screen bg-background flex-col">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur">
-        <div className="flex items-center gap-2 px-6 py-3 border-b">
-          <Activity className="h-5 w-5 text-primary" />
-          <span className="font-semibold">Transformer Health Monitor</span>
+        <div className="flex items-center justify-center px-6 py-3">
+          <div className="absolute left-6 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            <span className="font-semibold">Transformer Health Monitor</span>
+          </div>
+          <TabsList variant="line" className="bg-transparent justify-center rounded-none h-auto gap-6">
+            <TabsTrigger value="painel" className="flex-none">Painel de Controle</TabsTrigger>
+            <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
+          </TabsList>
         </div>
-        <TabsList variant="line" className="bg-transparent w-full justify-center rounded-none h-auto gap-6 px-6">
-          <TabsTrigger value="painel" className="flex-none">Painel de Controle</TabsTrigger>
-          <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
-        </TabsList>
       </header>
 
       <main className="p-6">
