@@ -44,9 +44,9 @@ export default function Dashboard() {
           <Activity className="h-5 w-5 text-primary" />
           <span className="font-semibold">Transformer Health Monitor</span>
         </div>
-        <TabsList variant="line" className="w-full bg-transparent justify-start rounded-none h-auto gap-6 px-6 border-b">
-          <TabsTrigger value="painel">Painel de Controle</TabsTrigger>
-          <TabsTrigger value="relatorio">Relatório</TabsTrigger>
+        <TabsList variant="line" className="bg-transparent w-full justify-center rounded-none h-auto gap-6 px-6">
+          <TabsTrigger value="painel" className="flex-none">Painel de Controle</TabsTrigger>
+          <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
         </TabsList>
       </header>
 
