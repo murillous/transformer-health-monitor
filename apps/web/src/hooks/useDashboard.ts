@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
 import type { LeituraMQTT } from "@transformer-monitor/shared";
+import { avaliarSeveridade, mapearGrandeza } from "@transformer-monitor/shared";
+import { toast } from "sonner";
 
 const MAX_PONTOS = 150;
 
@@ -14,6 +16,16 @@ export function useDashboard() {
 
   const processarLeitura = useCallback((data: Record<string, unknown>) => {
     const { topico, valor, ts, unidade } = data as { topico: string; valor: number; ts: number; unidade: string };
+
+    const grandeza = mapearGrandeza(topico);
+    if (grandeza) {
+      const sev = avaliarSeveridade(grandeza, valor);
+      if (sev === "critico") {
+        toast.error(`⚠️ ${topico}: ${valor}${unidade}`);
+      } else if (sev === "aviso") {
+        toast.warning(`⚡ ${topico}: ${valor}${unidade}`);
+      }
+    }
 
     setUltimosValores((prev) => ({ ...prev, [topico]: { ts, valor, unidade } }));
 

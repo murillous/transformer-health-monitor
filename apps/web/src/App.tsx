@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Relatorio from "./pages/Relatorio";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
           <Route path="/relatorio" element={<Relatorio />} />
         </Routes>
       </Layout>
+      <Toaster />
     </BrowserRouter>
   );
 }
