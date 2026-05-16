@@ -94,7 +94,7 @@ export default function AlertsPanel({ ultimosValores }: Props) {
   };
 
   return (
-    <Card>
+    <Card className="border-0 shadow-sm">
       <CardHeader>
         <CardTitle className="text-sm flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
