@@ -4,14 +4,16 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useDashboard } from "@/hooks/useDashboard";
 import MetricCard from "@/components/MetricCard";
 import Chart from "@/components/Chart";
+import SpectrumChart from "@/components/SpectrumChart";
 import AlertsPanel from "@/components/AlertsPanel";
 import Relatorio from "./Relatorio";
+import Alertas from "./Alertas";
 import { Button } from "@/components/ui/button";
 import { Activity, Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
-  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro } = useDashboard();
   useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
@@ -40,6 +42,8 @@ export default function Dashboard() {
     })
     .filter(Boolean) as { timestamp: number; valor: number }[];
 
+  const alertasAtivos = historicoAlertas.filter((a) => a.status === "ativo").length;
+
   const metricas = [
     { titulo: "Temperatura", topico: TOPICOS_MQTT.temperaturaNucleo },
     { titulo: "ΔT", topico: TOPICOS_MQTT.deltaT },
@@ -57,6 +61,14 @@ export default function Dashboard() {
           </div>
           <TabsList variant="line" className="bg-transparent justify-center rounded-none h-auto gap-6">
             <TabsTrigger value="painel" className="flex-none">Painel de Controle</TabsTrigger>
+            <TabsTrigger value="alertas" className="flex-none">
+              <span className="relative">
+                Alertas
+                {alertasAtivos > 0 && (
+                  <span className="absolute -top-1.5 -right-3 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
           </TabsList>
         </div>
@@ -142,6 +154,7 @@ export default function Dashboard() {
                 },
               ]}
             />
+            <SpectrumChart dados={espectro} />
           </div>
 
           <div className="grid grid-cols-1 gap-4">
@@ -159,6 +172,10 @@ export default function Dashboard() {
           </div>
 
           <AlertsPanel ultimosValores={ultimosValores} />
+        </TabsContent>
+
+        <TabsContent value="alertas">
+          <Alertas historico={historicoAlertas} onLimpar={limparHistoricoAlertas} />
         </TabsContent>
 
         <TabsContent value="relatorio">
