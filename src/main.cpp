@@ -58,10 +58,7 @@ void loop()
     publicador::publicar(TOPICO_CORR_PRIM,   rmsP, "Vrms");
     publicador::publicar(TOPICO_CORR_SEC,    rmsS, "Vrms");
     publicador::publicar(TOPICO_VIBRACAO,    mpu.az, "g");
-
-    if (!isnan(temp)) {
-        publicador::publicar(TOPICO_TEMP_NUCLEO, temp, "C");
-    }
+    publicador::publicar(TOPICO_TEMP_NUCLEO, temp, "C");
 
     Serial.println(F("-----------------------------------"));
 }

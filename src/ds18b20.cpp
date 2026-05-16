@@ -16,16 +16,14 @@ namespace ds18b20 {
 uint8_t iniciar()
 {
     sensor.begin();
-    sensor.setResolution(9);
-    sensor.setWaitForConversion(true);
-    delay(750);
+    // sensor.setResolution(12);
+    // sensor.setWaitForConversion(true);
     return sensor.getDeviceCount();
 }
 
 float lerTemperatura()
 {
     sensor.requestTemperatures();
-    delay(200);  // necessário no Proteus
 
     const float temp = sensor.getTempCByIndex(0);
 
