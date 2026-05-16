@@ -4,10 +4,14 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
 type Ponto = { timestamp: number; valor: number };
 
@@ -37,38 +41,50 @@ export default function Chart({ titulo, series }: Props) {
     return ponto;
   });
 
+  const chartConfig: ChartConfig = {};
+  for (const s of series) {
+    chartConfig[s.dataKey] = {
+      label: s.nome,
+      color: s.cor,
+    };
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">{titulo}</CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={dados}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
+          <LineChart data={dados} accessibilityLayer>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="timestamp"
               tickFormatter={(v) => new Date(v).toLocaleTimeString()}
-              fontSize={11}
-              stroke="#9ca3af"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
             />
-            <YAxis fontSize={11} stroke="#9ca3af" />
-            <Tooltip
-              labelFormatter={(v) => new Date(v).toLocaleTimeString()}
+            <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(v) => new Date(v).toLocaleTimeString()}
+                />
+              }
             />
             {series.map((s) => (
               <Line
                 key={s.dataKey}
                 type="monotone"
                 dataKey={s.dataKey}
-                name={s.nome}
-                stroke={s.cor}
+                stroke={`var(--color-${s.dataKey})`}
                 strokeWidth={2}
                 dot={false}
               />
             ))}
           </LineChart>
-        </ResponsiveContainer>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
