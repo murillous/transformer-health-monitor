@@ -1,9 +1,26 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { LeituraMQTT } from "@transformer-monitor/shared";
-import { avaliarSeveridade, mapearGrandeza, LIMITES } from "@transformer-monitor/shared";
+import { avaliarSeveridade, mapearGrandeza, LIMITES, TOPICOS_MQTT } from "@transformer-monitor/shared";
 import { toast } from "sonner";
 
 const MAX_PONTOS = 150;
+
+interface AlarmeAPI {
+  ts: number;
+  tipo: string;
+  sev: string;
+  valor: number;
+  limite: number;
+}
+
+const MAPA_TOPICO_GRANDEZA: Record<string, string> = {
+  [TOPICOS_MQTT.temperaturaNucleo]: "temperatura",
+  [TOPICOS_MQTT.deltaT]: "deltaT",
+  [TOPICOS_MQTT.vibracao120hz]: "vibracao120hz",
+  [TOPICOS_MQTT.correntePrimario]: "correntePrimario",
+  [TOPICOS_MQTT.correnteSecundario]: "correnteSecundario",
+  [TOPICOS_MQTT.vibracao240hz]: "vibracao240hz",
+};
 
 const LABELS: Record<string, string> = {
   temperatura: "Temperatura do Núcleo",
@@ -39,6 +56,64 @@ export function useDashboard() {
   const [historicoAlertas, setHistoricoAlertas] = useState<AlertaHistorico[]>([]);
   const [espectro, setEspectro] = useState<{ freq: number; amplitude: number }[]>([]);
   const espectroRef = useRef<{ freq: number; amplitude: number }[]>([]);
+  const carregado = useRef(false);
+
+  useEffect(() => {
+    if (carregado.current) return;
+    carregado.current = true;
+
+    const fim = new Date();
+    const inicio = new Date(fim.getTime() - 24 * 60 * 60 * 1000);
+
+    fetch(`/api/historico/alarmes?inicio=${inicio.toISOString()}&fim=${fim.toISOString()}`)
+      .then((r) => r.json())
+      .then((res: unknown) => {
+        const lista: AlarmeAPI[] = Array.isArray(res) ? res : (res as { data: AlarmeAPI[] })?.data ?? [];
+        const convertidos = lista.map((a) => ({
+          id: crypto.randomUUID(),
+          timestamp: a.ts,
+          grandeza: MAPA_TOPICO_GRANDEZA[a.tipo] ?? a.tipo,
+          topico: a.tipo,
+          valor: a.valor,
+          limite: a.limite,
+          unidade: "",
+          sev: a.sev as "aviso" | "critico",
+          status: "resolvido" as const,
+          resolvedAt: Date.now(),
+        }));
+        setHistoricoAlertas((prev) => {
+          const existentes = new Set(prev.map((p) => `${p.topico}-${p.timestamp}-${p.sev}`));
+          const novos = convertidos.filter((c) => !existentes.has(`${c.topico}-${c.timestamp}-${c.sev}`));
+          return [...prev, ...novos];
+        });
+      })
+      .catch(() => {});
+
+    fetch(`/api/historico?inicio=${inicio.toISOString()}&fim=${fim.toISOString()}`)
+      .then((r) => r.json())
+      .then((registros: { timestamp: string; topico: string; valor: number }[]) => {
+        if (!Array.isArray(registros) || registros.length === 0) return;
+        const agrupados: Record<string, { timestamp: number; valor: number }[]> = {};
+        for (const r of registros) {
+          const t = new Date(r.timestamp).getTime();
+          if (!agrupados[r.topico]) agrupados[r.topico] = [];
+          agrupados[r.topico].push({ timestamp: t, valor: r.valor });
+        }
+        setLeituras((prev) => {
+          const novo = { ...prev };
+          for (const [topico, pts] of Object.entries(agrupados)) {
+            const existentes = new Set(prev[topico]?.map((p) => p.timestamp) ?? []);
+            const novos = pts.filter((p) => !existentes.has(p.timestamp));
+            novo[topico] = [...(prev[topico] ?? []), ...novos];
+            if (novo[topico].length > MAX_PONTOS) {
+              novo[topico] = novo[topico].slice(-MAX_PONTOS);
+            }
+          }
+          return novo;
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   const ALPHA_EMA = 0.35;
 
