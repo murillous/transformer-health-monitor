@@ -13,6 +13,8 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 
+let jaAnimouGlobal = false;
+
 type Ponto = { timestamp: number; valor: number };
 
 type Serie = {
@@ -33,10 +35,10 @@ export default function Chart({ titulo, series }: Props) {
   ].sort();
 
   const dados = timestamps.map((ts) => {
-    const ponto: Record<string, number | string | null> = { timestamp: ts };
+    const ponto: Record<string, number | string> = { timestamp: ts };
     for (const s of series) {
       const p = s.pontos.find((p) => p.timestamp === ts);
-      ponto[s.dataKey] = p?.valor ?? null;
+      if (p) ponto[s.dataKey] = p.valor;
     }
     return ponto;
   });
@@ -48,6 +50,9 @@ export default function Chart({ titulo, series }: Props) {
       color: s.cor,
     };
   }
+
+  const animar = !jaAnimouGlobal && series.some((s) => s.pontos.length > 0);
+  if (animar) jaAnimouGlobal = true;
 
   return (
     <Card className="ring-0 shadow-sm border-0">
@@ -69,7 +74,10 @@ export default function Chart({ titulo, series }: Props) {
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  labelFormatter={(v) => new Date(v).toLocaleTimeString()}
+                  labelFormatter={(_value, payload) => {
+                    const ts = payload?.[0]?.payload?.timestamp;
+                    return ts ? new Date(ts).toLocaleTimeString() : "";
+                  }}
                 />
               }
             />
@@ -81,6 +89,7 @@ export default function Chart({ titulo, series }: Props) {
                 stroke={`var(--color-${s.dataKey})`}
                 strokeWidth={2}
                 dot={false}
+                isAnimationActive={animar}
               />
             ))}
           </LineChart>

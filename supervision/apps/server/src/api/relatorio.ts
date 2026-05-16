@@ -9,6 +9,10 @@ import {
 
 const router = Router();
 
+function fmtData(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR");
+}
+
 function gerarHTML(inicio: string, fim: string): string {
   const inicioDate = new Date(inicio);
   const fimDate = new Date(fim);
@@ -51,15 +55,15 @@ function gerarHTML(inicio: string, fim: string): string {
   .footer { margin-top: 40px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px; }
 </style></head><body>
   <h1>Relatório de Diagnóstico — Transformer Health Monitor</h1>
-  <p class="info">Gerado em: ${new Date().toISOString()}</p>
-  <p class="info">Período: ${inicio} a ${fim}</p>
+  <p class="info">Gerado em: ${new Date().toLocaleString("pt-BR")}</p>
+  <p class="info">Período: ${fmtData(inicio)} a ${fmtData(fim)}</p>
   <h2>Médias por Grandeza</h2>
   <table><thead><tr><th>Grandeza</th><th>Média</th></tr></thead>
     <tbody>${medias.map((m) => `<tr><td>${m.topico}</td><td>${m.media} ${m.unidade}</td></tr>`).join("")}</tbody>
   </table>
   <h2>Alertas no Período</h2>
   ${alarmes.length === 0 ? "<p>Nenhum alerta registrado.</p>" : `<table><thead><tr><th>Timestamp</th><th>Tipo</th><th>Severidade</th><th>Valor</th></tr></thead>
-    <tbody>${alarmes.map((a) => `<tr><td>${new Date(a.ts * 1000).toISOString()}</td><td>${a.tipo}</td><td style="color:${a.sev === "critico" ? "red" : "orange"}">${a.sev.toUpperCase()}</td><td>${a.valor}</td></tr>`).join("")}</tbody>
+    <tbody>${alarmes.map((a) => `<tr><td>${new Date(a.ts * 1000).toLocaleString("pt-BR")}</td><td>${a.tipo}</td><td style="color:${a.sev === "critico" ? "red" : "orange"}">${a.sev.toUpperCase()}</td><td>${a.valor}</td></tr>`).join("")}</tbody>
   </table>`}
   <h2>Diagnóstico</h2>
   ${linhasDiagnostico ? `<table><thead><tr><th>Grandeza</th><th>Valor</th><th>Severidade</th><th>Recomendação</th></tr></thead><tbody>${linhasDiagnostico}</tbody></table>` : "<p>Todos os parâmetros dentro da normalidade.</p>"}
