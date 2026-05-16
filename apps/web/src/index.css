@@ -8,8 +8,7 @@
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
-    --font-sans: 'Montserrat Variable', sans-serif
-  }
+    --font-sans: 'Montserrat Variable', sans-serif}
   :root {
     --background: oklch(1 0 0);
     --foreground: oklch(0.148 0.004 228.8);
@@ -42,8 +41,7 @@
     --sidebar-accent: oklch(0.963 0.002 197.1);
     --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
     --sidebar-border: oklch(0.925 0.005 214.3);
-    --sidebar-ring: oklch(0.723 0.014 214.4)
-  }
+    --sidebar-ring: oklch(0.723 0.014 214.4)}
   .dark {
     --background: oklch(0.148 0.004 228.8);
     --foreground: oklch(0.987 0.002 197.1);
@@ -75,8 +73,7 @@
     --sidebar-accent: oklch(0.275 0.011 216.9);
     --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.56 0.021 213.5)
-  }
+    --sidebar-ring: oklch(0.56 0.021 213.5)}
   * {
     @apply border-border;
     outline-color: var(--ring);
@@ -86,5 +83,8 @@
   }
   html {
     @apply font-sans;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
   }
 }
