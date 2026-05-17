@@ -3,6 +3,7 @@ import http from "http";
 import path from "path";
 import historicoRouter from "./api/historico";
 import relatorioRouter from "./api/relatorio";
+import diagnosticoRouter from "./api/diagnostico";
 import { WebSocketHub } from "./ws/hub";
 import { MQTTSubscriber } from "./mqtt/subscriber";
 import { createSimuladorRouter } from "./api/simular";
@@ -22,6 +23,7 @@ app.use("/api/simular", createSimuladorRouter(wsHub));
 // API routes
 app.use("/api/historico", historicoRouter);
 app.use("/api/relatorio", relatorioRouter);
+app.use("/api/diagnostico", diagnosticoRouter);
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 // Serve frontend build in production

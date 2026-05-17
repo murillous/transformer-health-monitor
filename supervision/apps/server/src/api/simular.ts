@@ -2,6 +2,7 @@ import { Router } from "express";
 import { TOPICOS_MQTT, mapearGrandeza, avaliarSeveridade, LIMITES } from "@transformer-monitor/shared";
 import { WebSocketHub } from "../ws/hub";
 import { store } from "../db/store";
+import { executarDiagnostico } from "./diagnostico";
 
 interface Gerador {
   base: number;
@@ -112,6 +113,12 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
           valores[TOPICOS_MQTT.vibracao240hz]
         ),
       });
+
+      executarDiagnostico()
+        .then((diag) => {
+          wsHub.broadcast({ topico: "diagnostico", ts: Math.floor(Date.now() / 1000), diagnostico: diag });
+        })
+        .catch(() => {});
     }, 1500);
 
     res.json({ ok: true });

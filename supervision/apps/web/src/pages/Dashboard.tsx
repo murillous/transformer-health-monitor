@@ -6,6 +6,8 @@ import MetricCard from "@/components/MetricCard";
 import Chart from "@/components/Chart";
 import SpectrumChart from "@/components/SpectrumChart";
 import AlertsPanel from "@/components/AlertsPanel";
+import DiagnosticoPanel from "@/components/DiagnosticoPanel";
+import DiagnosticoResumo from "@/components/DiagnosticoResumo";
 import Relatorio from "./Relatorio";
 import Alertas from "./Alertas";
 import { Button } from "@/components/ui/button";
@@ -13,7 +15,7 @@ import { Activity, Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
-  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico } = useDashboard();
   useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
@@ -69,6 +71,7 @@ export default function Dashboard() {
                 )}
               </span>
             </TabsTrigger>
+            <TabsTrigger value="diagnostico" className="flex-none">Diagnóstico</TabsTrigger>
             <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
           </TabsList>
         </div>
@@ -172,6 +175,11 @@ export default function Dashboard() {
           </div>
 
           <AlertsPanel ultimosValores={ultimosValores} />
+          <DiagnosticoResumo diagnostico={diagnostico} />
+        </TabsContent>
+
+        <TabsContent value="diagnostico" className="space-y-6">
+          <DiagnosticoPanel diagnostico={diagnostico} />
         </TabsContent>
 
         <TabsContent value="alertas">

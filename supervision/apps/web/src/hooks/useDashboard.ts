@@ -36,6 +36,30 @@ interface PontoGrafico {
   valor: number;
 }
 
+export interface DiagnosticoResultado {
+  timestamp?: number;
+  risco_operacional: {
+    score: number;
+    nivel: string;
+    termos: Record<string, number>;
+  };
+  urgencia_intervencao: {
+    score: number;
+    nivel: string;
+  };
+  diagnosticos: {
+    tipo: string;
+    severidade: string;
+    titulo: string;
+    mensagem: string;
+    recomendacao: string;
+    grandeza: string;
+    valor_atual: number | null;
+  }[];
+  grandezas_criticas: string[];
+  severidade_geral: string;
+}
+
 export interface AlertaHistorico {
   id: string;
   timestamp: number;
@@ -55,6 +79,7 @@ export function useDashboard() {
   const [acquiring, setAcquiring] = useState(true);
   const [historicoAlertas, setHistoricoAlertas] = useState<AlertaHistorico[]>([]);
   const [espectro, setEspectro] = useState<{ freq: number; amplitude: number }[]>([]);
+  const [diagnostico, setDiagnostico] = useState<DiagnosticoResultado | null>(null);
   const espectroRef = useRef<{ freq: number; amplitude: number }[]>([]);
   const carregado = useRef(false);
 
@@ -119,6 +144,11 @@ export function useDashboard() {
 
   const processarLeitura = useCallback((data: Record<string, unknown>) => {
     if (!acquiring) return;
+
+    if (data.topico === "diagnostico" && data.diagnostico) {
+      setDiagnostico(data.diagnostico as DiagnosticoResultado);
+      return;
+    }
 
     if ("espectro" in data) {
       const raw = data.espectro as { freq: number; amplitude: number }[];
@@ -205,5 +235,5 @@ export function useDashboard() {
     setHistoricoAlertas([]);
   }, []);
 
-  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro };
+  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico };
 }
