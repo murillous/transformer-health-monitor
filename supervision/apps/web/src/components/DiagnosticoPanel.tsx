@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, Gauge } from "lucide-react";
+import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, TrendingUpDown, Gauge } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
@@ -118,7 +118,7 @@ function fmtGrandeza(g: string): string {
 export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: Props) {
   if (!diagnostico) return null;
 
-  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp, vida_residual, predicoes } = diagnostico;
+  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp, vida_residual, tendencias, predicoes } = diagnostico;
   const sevGeralLED =
     severidade_geral === "critico" ? "bg-red-500 shadow-red-500/50" :
     severidade_geral === "aviso" ? "bg-yellow-500 shadow-yellow-500/50" :
@@ -175,10 +175,33 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
           </div>
         </div>
 
+        <div className="space-y-2">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <TrendingUpDown className="h-3 w-3" /> Tendências
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            {tendencias.map((t, i) => {
+              const Seta = t.direcao === "subindo" ? TrendingUp : t.direcao === "descendo" ? TrendingDown : TrendingUpDown;
+              const corSeta = t.direcao === "subindo" ? "text-red-400" : t.direcao === "descendo" ? "text-green-400" : "text-muted-foreground";
+              return (
+                <div key={`tend-${i}`} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
+                  <Seta className={`h-4 w-4 ${corSeta}`} />
+                  <div className="text-xs">
+                    <span className="font-medium">{t.label}</span>
+                    <span className="ml-2 text-muted-foreground">
+                      {t.direcao === "estavel" ? "estável" : `${Math.abs(t.inclinacao).toFixed(2)}°/h ${t.direcao === "subindo" ? "↑" : "↓"}`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {predicoes.length > 0 && (
           <div className="space-y-2">
             <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" /> Predições — Tendências para Alarme
+              <TrendingUp className="h-3 w-3" /> Predições — Alarme em Curso
             </span>
             <div className="grid grid-cols-2 gap-2">
               {predicoes.map((p, i) => (

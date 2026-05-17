@@ -94,7 +94,26 @@ function calcCorrelacaoCV(): number {
   return Math.min(100, Math.round((both / n) * 100));
 }
 
-function calcPredicoes(leituras: Record<string, number>): Array<{
+function calcTendencias(): Array<{
+  grandeza: string;
+  label: string;
+  inclinacao: number;
+  direcao: string;
+}> {
+  const metricas: Array<{ hist: { ts: number; valor: number }[]; grandeza: string; label: string }> = [
+    { hist: histTemp, grandeza: "temperatura", label: "Temperatura" },
+    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT" },
+  ];
+
+  return metricas.map((m) => {
+    const trend = linearRegression(m.hist);
+    const inclinacao = Math.round(trend.inclinacao * 100) / 100;
+    const direcao = Math.abs(inclinacao) < 0.1 ? "estavel" : inclinacao > 0 ? "subindo" : "descendo";
+    return { grandeza: m.grandeza, label: m.label, inclinacao, direcao };
+  });
+}
+
+function calcPredicoes(): Array<{
   grandeza: string;
   label: string;
   valor_atual: number;
@@ -183,6 +202,7 @@ export function executarDiagnostico(): Promise<unknown> {
         grandezas_criticas: [],
         severidade_geral: "ok",
         vida_residual: null,
+        tendencias: [],
         predicoes: [],
       });
       return;
@@ -205,7 +225,8 @@ export function executarDiagnostico(): Promise<unknown> {
     };
 
     const correlacao_cv = calcCorrelacaoCV();
-    const predicoes = calcPredicoes(leituras);
+    const tendencias = calcTendencias();
+    const predicoes = calcPredicoes();
 
     const inputData: Record<string, number | undefined | null> = {
       timestamp: Date.now() / 1000,
@@ -242,6 +263,7 @@ export function executarDiagnostico(): Promise<unknown> {
       try {
         const resultado = JSON.parse(stdout);
         resultado.vida_residual = vidaResidual;
+        resultado.tendencias = tendencias;
         resultado.predicoes = predicoes;
         resolve(resultado);
       } catch {

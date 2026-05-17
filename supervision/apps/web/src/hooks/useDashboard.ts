@@ -62,6 +62,12 @@ export interface DiagnosticoResultado {
     consumido: number;
     taxa_atual: number;
   } | null;
+  tendencias: {
+    grandeza: string;
+    label: string;
+    inclinacao: number;
+    direcao: string;
+  }[];
   predicoes: {
     grandeza: string;
     label: string;
