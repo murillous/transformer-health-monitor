@@ -1,0 +1,4 @@
+timestamp,tipo,severidade,valor,limite
+1778980186,transformador/nucleo/delta_t,aviso,19.36,15
+1778980186,transformador/vibracao/fft_120hz,aviso,0.38,0.2
+1778980188,transformador/secundario/corrente,aviso,43.97,30

@@ -7,14 +7,17 @@ import {
   consultarAlarmes,
   getAlarmes as dbGetAlarmes,
 } from "./database";
+import { csvPush, csvPushAlarme } from "./csv_logger";
 
 export class DataStore {
   push(registro: Registro): void {
     inserirRegistro(registro);
+    csvPush(registro);
   }
 
   pushAlarme(alarme: AlarmeMQTT): void {
     inserirAlarme(alarme);
+    csvPushAlarme(alarme);
   }
 
   historico(topico?: string): Registro[] {

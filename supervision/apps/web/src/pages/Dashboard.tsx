@@ -5,6 +5,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import MetricCard from "@/components/MetricCard";
 import Chart from "@/components/Chart";
 import SpectrumChart from "@/components/SpectrumChart";
+import WaveformChart from "@/components/WaveformChart";
 import AlertasResumo from "@/components/AlertasResumo";
 import DiagnosticoPanel from "@/components/DiagnosticoPanel";
 import DiagnosticoResumo from "@/components/DiagnosticoResumo";
@@ -16,7 +17,7 @@ import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
   const [tabAtual, setTabAtual] = useState("painel");
-  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico, historicoRisco } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico, historicoRisco, ondaPrimario, ondaSecundario } = useDashboard();
   useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
@@ -175,6 +176,11 @@ export default function Dashboard() {
                 },
               ]}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <WaveformChart titulo="Forma de Onda — Corrente Primário" amostras={ondaPrimario} cor="#3b82f6" />
+            <WaveformChart titulo="Forma de Onda — Corrente Secundário" amostras={ondaSecundario} cor="#10b981" />
           </div>
 
         </TabsContent>

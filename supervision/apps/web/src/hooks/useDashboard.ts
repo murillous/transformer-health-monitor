@@ -81,6 +81,8 @@ export function useDashboard() {
   const [espectro, setEspectro] = useState<{ freq: number; amplitude: number }[]>([]);
   const [diagnostico, setDiagnostico] = useState<DiagnosticoResultado | null>(null);
   const [historicoRisco, setHistoricoRisco] = useState<{ ts: number; score: number }[]>([]);
+  const [ondaPrimario, setOndaPrimario] = useState<number[]>([]);
+  const [ondaSecundario, setOndaSecundario] = useState<number[]>([]);
   const espectroRef = useRef<{ freq: number; amplitude: number }[]>([]);
   const carregado = useRef(false);
 
@@ -154,6 +156,15 @@ export function useDashboard() {
         if (novo.length > 60) novo.splice(0, novo.length - 60);
         return novo;
       });
+      return;
+    }
+
+    if (data.topico === "onda_corrente_primario" && Array.isArray(data.amostras)) {
+      setOndaPrimario(data.amostras as number[]);
+      return;
+    }
+    if (data.topico === "onda_corrente_secundario" && Array.isArray(data.amostras)) {
+      setOndaSecundario(data.amostras as number[]);
       return;
     }
 
@@ -242,5 +253,5 @@ export function useDashboard() {
     setHistoricoAlertas([]);
   }, []);
 
-  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico, historicoRisco };
+  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico, historicoRisco, ondaPrimario, ondaSecundario };
 }
