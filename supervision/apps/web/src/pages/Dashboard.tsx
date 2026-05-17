@@ -14,6 +14,7 @@ import Alertas from "./Alertas";
 import { Button } from "@/components/ui/button";
 import { Activity, Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Dashboard() {
   const [tabAtual, setTabAtual] = useState("painel");
@@ -62,6 +63,7 @@ export default function Dashboard() {
           <div className="absolute left-6 flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
             <span className="font-semibold">Transformer Health Monitor</span>
+            <ThemeToggle />
           </div>
           <TabsList variant="line" className="bg-transparent justify-center rounded-none h-auto gap-6">
             <TabsTrigger value="painel" className="flex-none">Painel de Controle</TabsTrigger>
