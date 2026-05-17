@@ -6,7 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:server": "MQTT_BROKER=none npm run dev -w @transformer-monitor/server",
+    "dev:server": "npm run dev -w @transformer-monitor/server",
+    "dev:server:offline": "MQTT_BROKER=none npm run dev -w @transformer-monitor/server",
     "dev:web": "npm run dev -w @transformer-monitor/web",
     "dev": "concurrently --names server,web --prefix-colors blue,green \"npm run dev:server\" \"npm run dev:web\"",
     "build": "npm run build -w @transformer-monitor/server && npm run build -w @transformer-monitor/web",

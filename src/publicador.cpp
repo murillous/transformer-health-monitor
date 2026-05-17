@@ -29,6 +29,7 @@ void iniciar()
 #if defined(ESP32)
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+    mqtt.setBufferSize(1024);  // espectro JSON cabe folgado
 #else
     // No Arduino o Serial já foi inicializado no setup()
 #endif
@@ -77,6 +78,47 @@ void publicarAlarme(const char* tipo, const char* severidade,
     Serial.print(TOPICO_ALARME);
     Serial.print(F(" -> "));
     Serial.println(payload);
+#endif
+}
+
+void publicarEspectro(const char* topico, const float* magnitudes,
+                      uint16_t n_amostras, float fs_hz)
+{
+    const uint16_t n_bins = n_amostras / 2;  // metade util do FFT
+    const unsigned long ts = millis() / 1000UL;
+
+#if defined(ESP32)
+    char payload[800];
+    int pos = snprintf(payload, sizeof(payload),
+                       "{\"ts\":%lu,\"espectro\":[", ts);
+    for (uint16_t i = 1; i < n_bins && pos < (int)sizeof(payload) - 40; i++) {
+        char ampBuf[12];
+        dtostrf(magnitudes[i], 0, 4, ampBuf);
+        const int freq = (int)((i * fs_hz / (float)n_amostras) + 0.5f);
+        pos += snprintf(payload + pos, sizeof(payload) - pos,
+                        "%s{\"freq\":%d,\"amplitude\":%s}",
+                        (i > 1) ? "," : "", freq, ampBuf);
+    }
+    snprintf(payload + pos, sizeof(payload) - pos, "]}");
+    mqtt.publish(topico, payload);
+#else
+    // Stream direto pro Serial: nao aloca buffer grande na RAM do AVR
+    Serial.print(F("[MQTT] "));
+    Serial.print(topico);
+    Serial.print(F(" -> {\"ts\":"));
+    Serial.print(ts);
+    Serial.print(F(",\"espectro\":["));
+    for (uint16_t i = 1; i < n_bins; i++) {
+        if (i > 1) Serial.print(',');
+        Serial.print(F("{\"freq\":"));
+        Serial.print((int)((i * fs_hz / (float)n_amostras) + 0.5f));
+        Serial.print(F(",\"amplitude\":"));
+        char ampBuf[12];
+        dtostrf(magnitudes[i], 0, 4, ampBuf);
+        Serial.print(ampBuf);
+        Serial.print('}');
+    }
+    Serial.println(F("]}"));
 #endif
 }
 

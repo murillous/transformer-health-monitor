@@ -2,11 +2,14 @@ import type { Severidade } from "./types";
 
 export const TOPICOS_MQTT = {
   correntePrimario: "transformador/primario/corrente",
+  inrushPrimario: "transformador/primario/inrush",
   correnteSecundario: "transformador/secundario/corrente",
   temperaturaNucleo: "transformador/nucleo/temperatura",
   deltaT: "transformador/nucleo/delta_t",
+  vibracaoAceleracao: "transformador/vibracao/aceleracao",
   vibracao120hz: "transformador/vibracao/fft_120hz",
   vibracao240hz: "transformador/vibracao/fft_240hz",
+  vibracaoEspectro: "transformador/vibracao/espectro",
   alarme: "transformador/status/alarme",
   heartbeat: "transformador/status/heartbeat",
 } as const;

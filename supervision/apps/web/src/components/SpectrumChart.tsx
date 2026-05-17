@@ -27,8 +27,8 @@ export default function SpectrumChart({ dados }: Props) {
               axisLine={false}
               tickMargin={8}
               type="number"
-              domain={[0, 600]}
-              ticks={[60, 120, 180, 240, 300, 360, 420, 480, 540, 600]}
+              domain={[0, 250]}
+              ticks={[0, 60, 120, 180, 240]}
             />
             <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, "auto"]} />
             <ChartTooltip

@@ -62,4 +62,6 @@ constexpr const char* TOPICO_CORR_SEC    = "transformador/secundario/corrente";
 constexpr const char* TOPICO_VIBRACAO    = "transformador/vibracao/aceleracao";
 constexpr const char* TOPICO_FFT_120HZ   = "transformador/vibracao/fft_120hz";
 constexpr const char* TOPICO_FFT_240HZ   = "transformador/vibracao/fft_240hz";
+constexpr const char* TOPICO_ESPECTRO    = "transformador/vibracao/espectro";
 constexpr const char* TOPICO_ALARME      = "transformador/status/alarme";
+constexpr const char* TOPICO_HEARTBEAT   = "transformador/status/heartbeat";

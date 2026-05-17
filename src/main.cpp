@@ -55,6 +55,10 @@ void loop()
         ultimaFft240Hz = espectro.fft_240hz;
         publicador::publicar(TOPICO_FFT_120HZ, ultimaFft120Hz, "g");
         publicador::publicar(TOPICO_FFT_240HZ, ultimaFft240Hz, "g");
+        publicador::publicarEspectro(TOPICO_ESPECTRO,
+                                     analise_vibracao::magnitudes(),
+                                     analise_vibracao::numAmostras(),
+                                     analise_vibracao::frequenciaAmostragemHz());
     }
 
     const diagnostico::Inrush inrush =
@@ -82,6 +86,8 @@ void loop()
     publicador::publicar(TOPICO_DELTA_T,     deltaT, "C");
 
     diagnostico::publicarAlarmes(temp, deltaT, ultimaFft120Hz, {false, 0.0f});
+
+    publicador::publicar(TOPICO_HEARTBEAT, (float)(millis() / 1000UL), "s");
 
     Serial.println(F("-----------------------------------"));
 }

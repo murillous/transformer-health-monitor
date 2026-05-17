@@ -42,6 +42,17 @@ void publicarAlarme(const char* tipo, const char* severidade,
                     float valor, float limite, const char* mensagem);
 
 /**
+ * @brief Publica espectro de FFT como array de pares {freq, amplitude}.
+ *
+ * @param topico       Topico MQTT de destino.
+ * @param magnitudes   Vetor de magnitudes (DC em indice 0 — ignorado).
+ * @param n_amostras   Tamanho original do buffer FFT (numero de amostras).
+ * @param fs_hz        Frequencia de amostragem em Hz.
+ */
+void publicarEspectro(const char* topico, const float* magnitudes,
+                      uint16_t n_amostras, float fs_hz);
+
+/**
  * @brief Mantém a conexão MQTT viva (só no ESP32).
  *
  * Deve ser chamada no loop() para reconexões automáticas.

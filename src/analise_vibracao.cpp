@@ -71,4 +71,8 @@ Espectro atualizar()
     return espectro;
 }
 
+const float* magnitudes()             { return v_real; }
+uint16_t      numAmostras()           { return AMOSTRAS_FFT; }
+float         frequenciaAmostragemHz(){ return FREQ_AMOSTRAGEM_HZ; }
+
 } // namespace analise_vibracao

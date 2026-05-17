@@ -25,4 +25,12 @@ void iniciar();
  */
 Espectro atualizar();
 
+/**
+ * @brief Vetor de magnitudes do ultimo FFT (valido apos Espectro::novo=true).
+ *        Tamanho = numAmostras() / 2. Indice 0 = DC.
+ */
+const float* magnitudes();
+uint16_t      numAmostras();
+float         frequenciaAmostragemHz();
+
 } // namespace analise_vibracao
