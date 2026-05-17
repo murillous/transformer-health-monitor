@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp } from "lucide-react";
+import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, Gauge } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
@@ -21,6 +21,50 @@ function RiskBar({ score, nivel }: { score: number; nivel: string }) {
         <div className={`h-full rounded-full transition-all duration-500 ${cor}`} style={{ width: `${Math.min(score, 100)}%` }} />
       </div>
       <span className="text-xs font-medium w-20 text-right">{nivel.toUpperCase()} ({score})</span>
+    </div>
+  );
+}
+
+function LifeBar({ consumido, taxa }: { consumido: number; taxa: number }) {
+  const cor = consumido > 80 ? "bg-red-500" : consumido > 50 ? "bg-yellow-500" : "bg-green-500";
+  const resto = Math.max(0, 100 - consumido);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground flex items-center gap-1">
+          <Gauge className="h-3 w-3" /> Vida Residual
+        </span>
+        <span className="font-medium">{resto.toFixed(0)}%</span>
+      </div>
+      <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${cor}`}
+          style={{ width: `${Math.min(consumido, 100)}%` }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>Consumido: {consumido.toFixed(0)}%</span>
+        <span>Taxa: {taxa.toFixed(2)}×</span>
+      </div>
+    </div>
+  );
+}
+
+function PredicaoCard({ p }: { p: DiagnosticoResultado["predicoes"][number] }) {
+  const corFundo = p.alarme_em === "critico" ? "bg-red-500/10 border-red-500/20" : "bg-yellow-500/10 border-yellow-500/20";
+  const seta = p.tendencia === "subindo" ? <TrendingUp className="h-3 w-3 text-red-400" /> : <TrendingDown className="h-3 w-3 text-green-400" />;
+  return (
+    <div className={`flex items-start gap-2 p-2 rounded-md border ${corFundo}`}>
+      <div className="shrink-0 mt-0.5">{seta}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium">{p.label}</div>
+        <div className="text-[10px] text-muted-foreground">
+          {p.valor_atual.toFixed(1)} → alarme em ~{p.tempo_para_alarme}min
+        </div>
+        <div className="text-[10px] text-muted-foreground">
+          +{p.inclinacao.toFixed(1)}/hora
+        </div>
+      </div>
     </div>
   );
 }
@@ -74,7 +118,7 @@ function fmtGrandeza(g: string): string {
 export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: Props) {
   if (!diagnostico) return null;
 
-  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp } = diagnostico;
+  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp, vida_residual, predicoes } = diagnostico;
   const sevGeralLED =
     severidade_geral === "critico" ? "bg-red-500 shadow-red-500/50" :
     severidade_geral === "aviso" ? "bg-yellow-500 shadow-yellow-500/50" :
@@ -108,7 +152,7 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2 space-y-3">
+          <div className="col-span-2 space-y-2">
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">Risco Operacional</span>
               <RiskBar score={risco_operacional.score} nivel={risco_operacional.nivel} />
@@ -117,6 +161,9 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
               <span className="text-xs text-muted-foreground">Urgência de Intervenção</span>
               <RiskBar score={urgencia_intervencao.score} nivel={urgencia_intervencao.nivel} />
             </div>
+            {vida_residual && (
+              <LifeBar consumido={vida_residual.consumido} taxa={vida_residual.taxa_atual} />
+            )}
           </div>
           <div className="col-span-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
@@ -127,6 +174,19 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
             </div>
           </div>
         </div>
+
+        {predicoes.length > 0 && (
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <TrendingUp className="h-3 w-3" /> Predições — Tendências para Alarme
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {predicoes.map((p, i) => (
+                <PredicaoCard key={`pred-${i}`} p={p} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {diagnosticos.length > 0 && (
           <div className="space-y-3">

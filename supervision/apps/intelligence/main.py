@@ -123,6 +123,22 @@ def _built_system():
         .add_term("sobrecarga", RightEdge(530, 580))
     )
 
+    # --- Input: Current × Vibration Correlation (0-100) ---
+    correlacao_cv = (
+        FuzzyVariable("correlacao_cv", 0, 100)
+        .add_term("baixa", LeftEdge(20, 40))
+        .add_term("media", Triangle(30, 50, 70))
+        .add_term("alta", RightEdge(60, 80))
+    )
+
+    # --- Input: Life Consumption (0-1, fraction) ---
+    vida_consumida = (
+        FuzzyVariable("vida_consumida", 0, 1)
+        .add_term("baixa", LeftEdge(0.2, 0.4))
+        .add_term("media", Triangle(0.3, 0.5, 0.7))
+        .add_term("alta", RightEdge(0.6, 0.8))
+    )
+
     # --- Output: Operational Risk (0-100) ---
     risco = (
         FuzzyVariable("risco_operacional", 0, 100)
@@ -140,7 +156,7 @@ def _built_system():
         .add_term("alta", RightEdge(55, 75))
     )
 
-    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, risco, urgencia]:
+    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, correlacao_cv, vida_consumida, risco, urgencia]:
         fsis.add_variable(var)
 
     R = lambda a, c, w=1.0: fsis.add_rule(a, c, w)
@@ -180,6 +196,15 @@ def _built_system():
 
     # === Cross-domain: mechanical + electrical ===
     R([("vibracao_120hz", "moderada"), ("corrente_primario", "elevada")], [("risco_operacional", "moderado")], 0.5)
+
+    # === Correlation current × vibration ===
+    R([("correlacao_cv", "alta"), ("corrente_primario", "elevada")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+    R([("correlacao_cv", "alta"), ("vibracao_120hz", "moderada")], [("risco_operacional", "moderado")], 0.7)
+    R([("correlacao_cv", "media"), ("corrente_primario", "elevada")], [("risco_operacional", "moderado")], 0.5)
+
+    # === Life consumption (Arrhenius) ===
+    R([("vida_consumida", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+    R([("vida_consumida", "media"), ("temperatura", "quente")], [("risco_operacional", "moderado")], 0.6)
 
     # === Normal operation ===
     R(
@@ -399,6 +424,36 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
             "valor_atual": None,
         })
         grandezas_criticas.add("estresse_combinado")
+
+    # Correlation current × vibration
+    correlacao_cv = inputs.get("correlacao_cv", 0)
+    if correlacao_cv > 60:
+        diagnosticos.append({
+            "tipo": "correlacao_eletromecanica",
+            "severidade": "critico" if correlacao_cv > 80 else "aviso",
+            "titulo": "Correlação Corrente × Vibração",
+            "mensagem": f"{'CRÍTICO' if correlacao_cv > 80 else 'AVISO'}: Corrente e vibração 120Hz elevadas simultaneamente ({correlacao_cv}%). Indica estresse eletromecânico ativo com possível evolução para curto entre espiras.",
+            "recomendacao": "Reduzir carga e inspecionar enrolamentos. Realizar ensaio de relação de transformação (TRT) e análise de descargas parciais.",
+            "grandeza": "multivariavel",
+            "valor_atual": correlacao_cv,
+        })
+        grandezas_criticas.add("correlacao_eletromecanica")
+
+    # Life consumption (Arrhenius)
+    vida_consumida_val = inputs.get("vida_consumida", 0)
+    if vida_consumida_val > 0.6:
+        sev = "critico" if vida_consumida_val > 0.8 else "aviso"
+        pct = round(vida_consumida_val * 100)
+        diagnosticos.append({
+            "tipo": "vida_util",
+            "severidade": sev,
+            "titulo": "Consumo de Vida Útil",
+            "mensagem": f"{'CRÍTICO' if sev == 'critico' else 'AVISO'}: {pct}% da vida útil estimada consumida. Degradação acelerada do isolamento por estresse térmico acumulado (Arrhenius).",
+            "recomendacao": "Programar ensaio de grau de polimerização (GP) e fator de potência do isolamento. Avaliar necessidade de substituição do transformador." if sev == "critico" else "Monitorar evolução do envelhecimento e programar ensaio de grau de polimerização.",
+            "grandeza": "multivariavel",
+            "valor_atual": pct,
+        })
+        grandezas_criticas.add("vida_util")
 
     return diagnosticos, sorted(grandezas_criticas)
 

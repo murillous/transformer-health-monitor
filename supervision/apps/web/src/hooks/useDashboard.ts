@@ -58,6 +58,19 @@ export interface DiagnosticoResultado {
   }[];
   grandezas_criticas: string[];
   severidade_geral: string;
+  vida_residual: {
+    consumido: number;
+    taxa_atual: number;
+  } | null;
+  predicoes: {
+    grandeza: string;
+    label: string;
+    valor_atual: number;
+    tendencia: string;
+    inclinacao: number;
+    tempo_para_alarme: number;
+    alarme_em: string;
+  }[];
 }
 
 export interface AlertaHistorico {
