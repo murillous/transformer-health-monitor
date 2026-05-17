@@ -1,11 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useDashboard } from "@/hooks/useDashboard";
 import MetricCard from "@/components/MetricCard";
 import Chart from "@/components/Chart";
 import SpectrumChart from "@/components/SpectrumChart";
-import AlertsPanel from "@/components/AlertsPanel";
+import AlertasResumo from "@/components/AlertasResumo";
 import DiagnosticoPanel from "@/components/DiagnosticoPanel";
 import DiagnosticoResumo from "@/components/DiagnosticoResumo";
 import Relatorio from "./Relatorio";
@@ -15,6 +15,7 @@ import { Activity, Play, Square, RotateCcw } from "lucide-react";
 import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
+  const [tabAtual, setTabAtual] = useState("painel");
   const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico } = useDashboard();
   useWebSocket(processarLeitura);
 
@@ -54,7 +55,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <Tabs defaultValue="painel" className="min-h-screen bg-background flex-col">
+    <Tabs value={tabAtual} onValueChange={setTabAtual} className="min-h-screen bg-background flex-col">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur">
         <div className="flex items-center justify-center px-6 py-3">
           <div className="absolute left-6 flex items-center gap-2">
@@ -100,7 +101,7 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-6 gap-4">
             {metricas.map((m) => (
               <MetricCard
                 key={m.topico}
@@ -109,6 +110,8 @@ export default function Dashboard() {
                 leitura={ultimosValores[m.topico] ?? null}
               />
             ))}
+            <DiagnosticoResumo diagnostico={diagnostico} onNavigate={() => setTabAtual("diagnostico")} />
+            <AlertasResumo ultimosValores={ultimosValores} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -174,8 +177,6 @@ export default function Dashboard() {
             />
           </div>
 
-          <AlertsPanel ultimosValores={ultimosValores} />
-          <DiagnosticoResumo diagnostico={diagnostico} />
         </TabsContent>
 
         <TabsContent value="diagnostico" className="space-y-6">
