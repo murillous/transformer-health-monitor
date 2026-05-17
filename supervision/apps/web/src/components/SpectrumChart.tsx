@@ -49,6 +49,7 @@ export default function SpectrumChart({ dados }: Props) {
               fill="var(--color-amplitude)"
               radius={[2, 2, 0, 0]}
               maxBarSize={20}
+              isAnimationActive={false}
             />
           </BarChart>
         </ChartContainer>

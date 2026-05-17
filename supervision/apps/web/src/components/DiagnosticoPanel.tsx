@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, TrendingUpDown, Gauge } from "lucide-react";
-import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, CartesianGrid } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
 type Props = {
@@ -82,13 +82,19 @@ function Sparkline({ historico }: { historico: { ts: number; score: number }[] }
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data}>
+      <LineChart data={data} margin={{ top: 2, right: 2, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="hsl(var(--muted-foreground) / 0.15)" />
+        <XAxis dataKey="t" hide />
+        <YAxis domain={[0, 100]} hide />
+        <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={1} />
+        <ReferenceLine y={50} stroke="#f59e0b" strokeDasharray="3 3" strokeWidth={1} />
+        <ReferenceLine y={25} stroke="#22c55e" strokeDasharray="3 3" strokeWidth={1} />
         <Tooltip
           contentStyle={{ fontSize: 10, padding: "2px 6px" }}
           labelFormatter={(label) => label}
           formatter={(value) => [Number(value).toFixed(1), "Risco"]}
         />
-        <Line type="monotone" dataKey="s" stroke="#8884d8" strokeWidth={1.5} dot={false} />
+        <Line type="monotone" dataKey="s" stroke="#8884d8" strokeWidth={1.5} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
