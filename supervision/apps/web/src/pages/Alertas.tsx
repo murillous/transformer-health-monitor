@@ -59,8 +59,13 @@ export default function Alertas() {
   const [filtroSev, setFiltroSev] = useState<FiltroSev>("");
   const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>("");
   const [limitePag, setLimitePag] = useState(20);
+  const [filtroStatus, setFiltroStatus] = useState<"todas" | "ativo" | "resolvido">("todas");
 
-  const filtroStatus = () => true;
+  const filtroStatusFn = (row: AlarmeRow): boolean => {
+    if (filtroStatus === "todas") return true;
+    const limite = Date.now() / 1000 - 3600;
+    return filtroStatus === "ativo" ? row.ts >= limite : row.ts < limite;
+  };
 
   const carregar = useCallback(async (page: number, sev: FiltroSev, periodo: FiltroPeriodo, limit: number) => {
     setLoading(true);
@@ -206,11 +211,26 @@ export default function Alertas() {
         </div>
       </CardHeader>
       <CardContent>
-          <div className="flex items-end gap-4 mb-4">
+          <div className="flex items-end gap-4 mb-4 flex-wrap">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Estado</span>
+              <Select value={filtroStatus} onValueChange={(v) => setFiltroStatus(v as "todas" | "ativo" | "resolvido")}>
+                <SelectTrigger className="w-36">
+                  <SelectValue>
+                    {filtroStatus === "ativo" ? "Ativo" : filtroStatus === "resolvido" ? "Resolvido" : "Todos"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todos</SelectItem>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="resolvido">Resolvido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">Severidade</span>
               <Select value={filtroSev} onValueChange={(v) => setFiltroSev(v as FiltroSev)}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-36">
                   <SelectValue>
                     {filtroSev === "critico" ? "Crítico" : filtroSev === "aviso" ? "Aviso" : "Todas"}
                   </SelectValue>
@@ -225,7 +245,7 @@ export default function Alertas() {
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">Período</span>
               <Select value={filtroPeriodo} onValueChange={(v) => setFiltroPeriodo(v as FiltroPeriodo)}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-40">
                   <SelectValue>
                     {filtroPeriodo === "1h" ? "Última hora" : filtroPeriodo === "6h" ? "Últimas 6 horas" : filtroPeriodo === "hoje" ? "Hoje" : filtroPeriodo === "7d" ? "Últimos 7 dias" : filtroPeriodo === "30d" ? "Últimos 30 dias" : "Todo período"}
                   </SelectValue>
@@ -261,7 +281,7 @@ export default function Alertas() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dados.filter(filtroStatus).map((a, i) => (
+                  {dados.filter(filtroStatusFn).map((a, i) => (
                     <TableRow key={`${a.ts}-${a.tipo}-${i}`}>
                       <TableCell>
                         <Badge variant={a.sev === "critico" ? "destructive" : "secondary"}>
@@ -280,32 +300,29 @@ export default function Alertas() {
               </Table>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Por página:</span>
-                  <Select value={String(limitePag)} onValueChange={(v) => { setLimitePag(Number(v)); }}>
-                    <SelectTrigger className="w-16 h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="20">20</SelectItem>
-                      <SelectItem value="50">50</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground">
-                    {pag.total > 0
-                      ? `${(pag.page - 1) * pag.limit + 1}-${Math.min(pag.page * pag.limit, pag.total)} de ${pag.total}`
-                      : "0 registros"}
-                  </span>
-                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Por página:</span>
+                <Select value={String(limitePag)} onValueChange={(v) => { setLimitePag(Number(v)); }}>
+                  <SelectTrigger className="w-16 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
 
-                {pag.totalPages > 1 && (
-                  <Pagination className="w-auto">
-                    <PaginationContent>
-                      {paginas()}
-                    </PaginationContent>
-                  </Pagination>
-                )}
+                <Pagination className="w-auto">
+                  <PaginationContent className="gap-0.5">
+                    {paginas()}
+                  </PaginationContent>
+                </Pagination>
+
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {pag.total > 0
+                    ? `${(pag.page - 1) * pag.limit + 1}-${Math.min(pag.page * pag.limit, pag.total)} de ${pag.total}`
+                    : "0 registros"}
+                </span>
               </div>
             </>
           )}
