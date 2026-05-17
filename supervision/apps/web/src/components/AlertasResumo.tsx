@@ -2,13 +2,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import LedIndicator from "./LedIndicator";
 import type { LeituraMQTT } from "@transformer-monitor/shared";
 import { avaliarSeveridade, mapearGrandeza } from "@transformer-monitor/shared";
-import { Bell } from "lucide-react";
+import { ChevronsRight } from "lucide-react";
 
 type Props = {
   ultimosValores: Record<string, LeituraMQTT>;
+  onNavigate?: () => void;
 };
 
-export default function AlertasResumo({ ultimosValores }: Props) {
+const borda: Record<string, string> = {
+  critico: "border-l-red-500",
+  aviso: "border-l-yellow-400",
+  ok: "border-l-green-500",
+};
+
+const corTexto: Record<string, string> = {
+  critico: "text-red-600",
+  aviso: "text-yellow-600",
+  ok: "text-green-600",
+};
+
+export default function AlertasResumo({ ultimosValores, onNavigate }: Props) {
   let maxSev: "ok" | "aviso" | "critico" = "ok";
   let ativos = 0;
 
@@ -22,22 +35,34 @@ export default function AlertasResumo({ ultimosValores }: Props) {
   }
 
   return (
-    <Card className="ring-0 shadow-sm border-0">
-      <CardContent className="p-4">
+    <Card
+      className={`ring-0 shadow-sm border-0 border-l-4 ${borda[maxSev]} cursor-pointer hover:bg-accent/50 transition-colors`}
+      onClick={onNavigate}
+    >
+      <CardContent className="p-4 flex flex-col h-full">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Alertas</span>
+          <span className="text-sm text-muted-foreground">Alertas</span>
+          <div className="flex items-center gap-1.5">
+            <LedIndicator severity={maxSev} />
           </div>
-          <LedIndicator severity={maxSev} />
         </div>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-2xl font-bold">
-            {ativos > 0 ? `${ativos} ativo${ativos > 1 ? "s" : ""}` : "0"}
+        <div className="mt-2">
+          <span className={`text-2xl font-bold ${corTexto[maxSev]}`}>
+            {ativos}
           </span>
-          <span className="text-sm text-muted-foreground">
-            {ativos > 0 ? (maxSev === "critico" ? "Crítico" : "Aviso") : "Normal"}
+          <span className={`ml-1.5 text-sm font-medium ${corTexto[maxSev]}`}>
+            {ativos > 0
+              ? maxSev === "critico" ? "CRÍTICO" : "AVISO"
+              : "NORMAL"}
           </span>
+        </div>
+        <div className="mt-auto flex items-center justify-between pt-1">
+          <span className="text-xs text-muted-foreground">
+            {ativos > 0
+              ? `${ativos === 1 ? "ativo" : "ativos"}`
+              : "sem alertas"}
+          </span>
+          <ChevronsRight className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
       </CardContent>
     </Card>

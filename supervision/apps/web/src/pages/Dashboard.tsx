@@ -111,7 +111,7 @@ export default function Dashboard() {
               />
             ))}
             <DiagnosticoResumo diagnostico={diagnostico} onNavigate={() => setTabAtual("diagnostico")} />
-            <AlertasResumo ultimosValores={ultimosValores} />
+            <AlertasResumo ultimosValores={ultimosValores} onNavigate={() => setTabAtual("alertas")} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
