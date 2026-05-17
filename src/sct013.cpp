@@ -16,4 +16,10 @@ float lerRMS(uint8_t pino)
     return sqrt(somatorio / N_AMOSTRAS_RMS);
 }
 
+float lerInstantaneoAbs(uint8_t pino)
+{
+    const float tensao = (analogRead(pino) * VREF / ADC_RES) - BIAS;
+    return fabs(tensao);
+}
+
 } // namespace sct013

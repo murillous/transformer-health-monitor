@@ -19,4 +19,12 @@ namespace sct013 {
  */
 float lerRMS(uint8_t pino);
 
+/**
+ * @brief Le uma amostra instantanea absoluta do sinal AC no pino.
+ *
+ * Remove o bias DC e retorna o modulo da tensao. Usado para detectar picos
+ * rapidos de inrush sem esperar a janela RMS periodica.
+ */
+float lerInstantaneoAbs(uint8_t pino);
+
 } // namespace sct013

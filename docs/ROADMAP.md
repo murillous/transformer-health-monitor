@@ -11,9 +11,9 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 | Módulo | Progresso | Responsável |
 |---|---|---|
 | 🔧 Hardware | ▓▓▓▓▓▓░░░░ 60% | P1 |
-| 💾 Firmware Base | ▓▓▓▓▓▓▓▓▓░ 85% | P2 |
-| 📊 DSP & Algoritmos | ▓▓░░░░░░░░ 20% | P3 |
-| 📡 IoT & MQTT | ▓▓▓░░░░░░░ 30% | P4 |
+| 💾 Firmware Base | ▓▓▓▓▓▓▓▓▓░ 90% | P2 |
+| 📊 DSP & Algoritmos | ▓▓▓▓▓▓░░░░ 60% | P3 |
+| 📡 IoT & MQTT | ▓▓▓▓░░░░░░ 45% | P4 |
 | 🖥️ IHM Python | ░░░░░░░░░░ 0% | P5 |
 | 📋 Diagnóstico & Docs | ▓▓▓▓▓░░░░░ 50% | P6 |
 
@@ -80,7 +80,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 ### Portabilidade ESP32
 
 - [x] Adicionar `env:esp32` no `platformio.ini`
-- [ ] Testar compilação para ESP32 (sem gravar ainda)
+- [x] Testar compilação para ESP32 (sem gravar ainda)
 - [ ] Configurar credenciais WiFi em `publicador.cpp`
 - [ ] Gravar firmware no ESP32 físico
 - [ ] Validar leituras dos 4 sensores no hardware real
@@ -91,30 +91,30 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 
 ### FFT — análise vibracional
 
-- [ ] Adicionar biblioteca `kosme/arduinoFFT` ao `platformio.ini`
-- [ ] Coletar buffer de amostras do MPU6050 (eixo Z, ~500Hz)
-- [ ] Aplicar janelamento (Hamming)
-- [ ] Calcular FFT do buffer
-- [ ] Extrair amplitude na frequência de 120Hz
-- [ ] Extrair amplitude na frequência de 240Hz (2ª harmônica)
-- [ ] Publicar nos tópicos `vibracao/fft_120hz` e `vibracao/fft_240hz`
+- [x] Adicionar biblioteca `kosme/arduinoFFT` ao `platformio.ini`
+- [x] Coletar buffer de amostras do MPU6050 (eixo Z, ~500Hz)
+- [x] Aplicar janelamento (Hamming)
+- [x] Calcular FFT do buffer
+- [x] Extrair amplitude na frequência de 120Hz
+- [x] Extrair amplitude na frequência de 240Hz (2ª harmônica)
+- [x] Publicar nos tópicos `vibracao/fft_120hz` e `vibracao/fft_240hz`
 - [ ] Validar com sinal sintético conhecido (gerar 120Hz puro, verificar pico)
 
 ### Detecção de Inrush Current
 
 - [ ] Implementar buffer circular de corrente do primário
-- [ ] Definir limiar de corrente para considerar inrush
-- [ ] Implementar máquina de estados (idle → monitorando → cooldown)
-- [ ] Capturar pico máximo durante janela de 500ms
-- [ ] Publicar flag + valor no tópico `primario/inrush` (QoS 1, retained)
+- [x] Definir limiar de corrente para considerar inrush
+- [x] Implementar máquina de estados (idle → monitorando → cooldown)
+- [x] Capturar pico máximo durante janela de 500ms
+- [x] Publicar flag + valor no tópico `primario/inrush` (QoS 1, retained)
 - [ ] Testar com simulação de surto na VSINE
 
 ### Gradiente térmico (ΔT)
 
-- [ ] Estimar temperatura ambiente (constante ou sensor externo)
-- [ ] Calcular ΔT = T_núcleo − T_ambiente
+- [x] Estimar temperatura ambiente (constante ou sensor externo)
+- [x] Calcular ΔT = T_núcleo − T_ambiente
 - [ ] Cruzar ΔT com nível de carga (corrente secundária)
-- [ ] Publicar no tópico `nucleo/delta_t`
+- [x] Publicar no tópico `nucleo/delta_t`
 - [ ] Implementar alerta de eficiência (ΔT crescente sem aumento de carga)
 
 ---
@@ -129,7 +129,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Definir constantes de tópicos em `config.h`
 - [ ] Implementar publicação MQTT real via PubSubClient (ramo `#if defined(ESP32)`)
 - [ ] Implementar reconexão automática quando WiFi/broker cair
-- [ ] Implementar `publicar_alarme()` com payload estruturado (severidade, mensagem)
+- [x] Implementar `publicar_alarme()` com payload estruturado (severidade, mensagem)
 
 ### Broker e infraestrutura
 

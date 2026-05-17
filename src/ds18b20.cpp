@@ -5,9 +5,9 @@
 
 namespace {
 
-OneWire           oneWire(PINO_DS18B20);
-DallasTemperature sensor(&oneWire);
-float             ultimaTempValida = NAN;
+static OneWire           oneWire(PINO_DS18B20);
+static DallasTemperature sensor(&oneWire);
+static float             ultimaTempValida = NAN;
 
 } // namespace anônimo
 

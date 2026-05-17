@@ -30,6 +30,18 @@ void iniciar();
 void publicar(const char* topico, float valor, const char* unidade);
 
 /**
+ * @brief Publica um alarme estruturado no topico de status.
+ *
+ * @param tipo        Identificador do alarme.
+ * @param severidade  Nivel do alarme (warning, critical).
+ * @param valor       Valor que disparou o alarme.
+ * @param limite      Limite configurado.
+ * @param mensagem    Mensagem curta para a IHM.
+ */
+void publicarAlarme(const char* tipo, const char* severidade,
+                    float valor, float limite, const char* mensagem);
+
+/**
  * @brief Mantém a conexão MQTT viva (só no ESP32).
  *
  * Deve ser chamada no loop() para reconexões automáticas.

@@ -11,7 +11,7 @@ constexpr uint8_t REG_GYRO_X        = 0x43;
 constexpr float   ACCEL_LSB_POR_G   = 16384.0f;
 constexpr float   GYRO_LSB_POR_DPS  = 131.0f;
 
-int16_t lerRegistrador16(uint8_t reg)
+static int16_t lerRegistrador16(uint8_t reg)
 {
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(reg);
@@ -33,7 +33,6 @@ bool iniciar()
     Wire.write(REG_PWR);
     Wire.write(0x00);
     Wire.endTransmission();
-    delay(100);
 
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(REG_WHO_AM_I);

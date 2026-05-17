@@ -61,7 +61,11 @@ diagnostico_transformador/
 │   ├── ds18b20.h             # Temperatura (OneWire) com cache
 │   ├── ds18b20.cpp
 │   ├── sct013.h              # Corrente RMS (ADC)
-│   └── sct013.cpp
+│   ├── sct013.cpp
+│   ├── analise_vibracao.h    # Buffer MPU6050 + FFT 120/240Hz
+│   ├── analise_vibracao.cpp
+│   ├── diagnostico.h         # ΔT, inrush e alarmes
+│   └── diagnostico.cpp
 ├── include/                  # Headers externos (vazio por padrão)
 ├── lib/                      # Bibliotecas locais
 ├── proteus/
@@ -87,8 +91,10 @@ diagnostico_transformador/
 | `config.h` | Define pinos e calibração — detecta plataforma automaticamente | P1 |
 | `mpu6050` | Inicialização I²C, leitura de aceleração/giro, conversão para g e °/s | P2 |
 | `ds18b20` | OneWire + cache de última leitura válida (tolerância a falhas) | P2 |
-| `sct013` | Amostragem ADC + cálculo RMS | P3 |
-| `publicador` | Abstrai transporte — Serial no Proteus, MQTT no ESP32 | P4 |
+| `sct013` | Amostragem ADC, cálculo RMS e leitura instantânea para pico de inrush | P3 |
+| `analise_vibracao` | Amostragem incremental do MPU6050 e FFT em 120/240Hz | P3 |
+| `diagnostico` | Gradiente ΔT, máquina de estados de inrush e emissão de alarmes | P3/P6 |
+| `publicador` | Abstrai transporte — Serial no Proteus, MQTT no ESP32, incluindo alarmes | P4 |
 | `main.cpp` | Amarra os módulos no loop não-bloqueante | — |
 
 ---
@@ -171,9 +177,12 @@ A seleção entre os dois caminhos é automática, controlada por `#if defined(E
 
 ```
 [MQTT] transformador/nucleo/temperatura -> {"ts":4,"valor":26.5000,"unidade":"C"}
+[MQTT] transformador/nucleo/delta_t -> {"ts":4,"valor":1.5000,"unidade":"C"}
 [MQTT] transformador/primario/corrente -> {"ts":4,"valor":0.6914,"unidade":"Vrms"}
 [MQTT] transformador/secundario/corrente -> {"ts":4,"valor":0.3461,"unidade":"Vrms"}
 [MQTT] transformador/vibracao/aceleracao -> {"ts":4,"valor":0.0000,"unidade":"g"}
+[MQTT] transformador/vibracao/fft_120hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
+[MQTT] transformador/vibracao/fft_240hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
 ```
 
 Esse é literalmente o payload que será publicado no broker no hardware físico. Toda a estrutura — hierarquia de tópicos, formato JSON, timestamp — está validada já na simulação.
@@ -204,7 +213,7 @@ Para apresentar o sistema completo durante a entrega da simulação (18/05), o s
 | Tópico | Dado | Unidade |
 |---|---|---|
 | `transformador/primario/corrente` | Corrente RMS primário | Vrms |
-| `transformador/primario/inrush` | Flag + valor de pico | A |
+| `transformador/primario/inrush` | Pico instantâneo detectado no primário | Vpico no Proteus / A no hardware calibrado |
 | `transformador/secundario/corrente` | Corrente RMS secundário | Vrms |
 | `transformador/nucleo/temperatura` | Temperatura absoluta | °C |
 | `transformador/nucleo/delta_t` | Gradiente térmico | °C |
@@ -221,6 +230,19 @@ Para apresentar o sistema completo durante a entrega da simulação (18/05), o s
   "ts": 1748000000,
   "valor": 26.5,
   "unidade": "C"
+}
+```
+
+**Formato do payload de alarme:**
+
+```json
+{
+  "ts": 1748000000,
+  "tipo": "vibracao_120hz",
+  "severidade": "warning",
+  "valor": 0.42,
+  "limite": 0.20,
+  "mensagem": "Vibracao em 120Hz acima do limite"
 }
 ```
 
@@ -272,6 +294,9 @@ lib_deps =
 [MQTT] transformador/secundario/corrente -> {"ts":4,"valor":0.3461,"unidade":"Vrms"}
 [MQTT] transformador/vibracao/aceleracao -> {"ts":4,"valor":0.0000,"unidade":"g"}
 [MQTT] transformador/nucleo/temperatura -> {"ts":4,"valor":26.5000,"unidade":"C"}
+[MQTT] transformador/nucleo/delta_t -> {"ts":4,"valor":1.5000,"unidade":"C"}
+[MQTT] transformador/vibracao/fft_120hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
+[MQTT] transformador/vibracao/fft_240hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
 -----------------------------------
 ```
 
@@ -332,8 +357,8 @@ As limitações específicas do Proteus e seus workarounds estão documentadas e
 |---|---|---|
 | P1 — Hardware | Circuito físico, condicionamento SCT-013, pinagem ESP32 | Sinal condicionado mensurável no osciloscópio |
 | P2 — Firmware Base | Módulos `mpu6050`, `ds18b20`, código não-bloqueante | Leituras estáveis no Virtual Terminal sem `delay()` |
-| P3 — DSP & Algoritmos | Módulo `sct013`, FFT 120Hz, detecção Inrush, gradiente ΔT | Espectro vibracional e flag de Inrush funcionando |
-| P4 — IoT & MQTT | Módulo `publicador`, broker Mosquitto, JSON com timestamp | ESP32 publicando nos tópicos, testável com `mosquitto_sub` |
+| P3 — DSP & Algoritmos | Módulos `sct013`, `analise_vibracao`, FFT 120Hz, detecção Inrush, gradiente ΔT | Espectro vibracional e flag de Inrush funcionando |
+| P4 — IoT & MQTT | Módulo `publicador`, broker Mosquitto, JSON com timestamp e alarmes | ESP32 publicando nos tópicos, testável com `mosquitto_sub` |
 | P5 — IHM Python | Dashboard, subscriber MQTT, alertas LED virtuais | Painel funcionando com dados reais do broker |
 | P6 — Diagnóstico & Docs | Lógica fuzzy/limites, datalogger CSV, relatório PDF | Diagnósticos na IHM, CSV gravando, PDF exportável |
 

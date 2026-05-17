@@ -39,12 +39,27 @@
 constexpr int           N_AMOSTRAS_RMS = 200;
 constexpr unsigned long INTERVALO_MS   = 2000UL;
 
+constexpr float TEMPERATURA_AMBIENTE_C      = 25.0f;
+constexpr float LIMIAR_TEMP_AVISO_C         = 70.0f;
+constexpr float LIMIAR_TEMP_CRITICO_C       = 85.0f;
+constexpr float LIMIAR_DELTA_T_AVISO_C      = 15.0f;
+constexpr float LIMIAR_DELTA_T_CRITICO_C    = 25.0f;
+constexpr float LIMIAR_INRUSH_VPICO         = 0.95f;
+constexpr unsigned long JANELA_INRUSH_MS    = 500UL;
+constexpr unsigned long COOLDOWN_INRUSH_MS  = 3000UL;
+constexpr float LIMIAR_FFT_120HZ_AVISO_G    = 0.20f;
+constexpr float LIMIAR_FFT_120HZ_CRITICO_G  = 0.45f;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Tópicos MQTT — mesma string usada no Proteus (Serial) e no ESP32 (broker)
 // ═══════════════════════════════════════════════════════════════════════════
 
 constexpr const char* TOPICO_TEMP_NUCLEO = "transformador/nucleo/temperatura";
+constexpr const char* TOPICO_DELTA_T     = "transformador/nucleo/delta_t";
 constexpr const char* TOPICO_CORR_PRIM   = "transformador/primario/corrente";
+constexpr const char* TOPICO_INRUSH      = "transformador/primario/inrush";
 constexpr const char* TOPICO_CORR_SEC    = "transformador/secundario/corrente";
 constexpr const char* TOPICO_VIBRACAO    = "transformador/vibracao/aceleracao";
+constexpr const char* TOPICO_FFT_120HZ   = "transformador/vibracao/fft_120hz";
+constexpr const char* TOPICO_FFT_240HZ   = "transformador/vibracao/fft_240hz";
 constexpr const char* TOPICO_ALARME      = "transformador/status/alarme";
