@@ -131,6 +131,36 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
 
       ultimasLeituras = valores;
 
+      // Inrush sintetico: spike ocasional pra demonstrar diagnostico fuzzy.
+      // ~1 a cada 40s (prob 0.025 @ tick 1s). Inrush e evento discreto — so
+      // emite quando dispara, ausente das outras leituras.
+      if (Math.random() < 0.025) {
+        const inrushVal = Math.round((1.8 + Math.random() * 2.7) * 100) / 100;
+        wsHub.broadcast({
+          topico: TOPICOS_MQTT.inrushPrimario,
+          ts: Math.floor(Date.now() / 1000),
+          valor: inrushVal,
+          unidade: "A",
+        });
+        store.push({
+          timestamp: agora,
+          topico: TOPICOS_MQTT.inrushPrimario,
+          valor: inrushVal,
+          unidade: "A",
+          alarme: "",
+        });
+        const sev = avaliarSeveridade("inrushPrimario", inrushVal);
+        if (sev !== "ok") {
+          store.pushAlarme({
+            ts: Math.floor(Date.now() / 1000),
+            tipo: TOPICOS_MQTT.inrushPrimario,
+            sev,
+            valor: inrushVal,
+            limite: sev === "critico" ? LIMITES.inrushPrimario.critico : LIMITES.inrushPrimario.aviso,
+          });
+        }
+      }
+
       wsHub.broadcast({
         topico: TOPICOS_MQTT.heartbeat,
         ts: Math.floor(Date.now() / 1000),

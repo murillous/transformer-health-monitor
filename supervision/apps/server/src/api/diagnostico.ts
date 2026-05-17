@@ -15,6 +15,7 @@ const MAPA: Record<string, string> = {
   "transformador/vibracao/fft_240hz": "vibracao_240hz",
   "transformador/primario/corrente": "corrente_primario",
   "transformador/secundario/corrente": "corrente_secundario",
+  "transformador/primario/inrush": "inrush",
 };
 
 function mapTopico(topico: string): string {
@@ -290,12 +291,18 @@ export function executarDiagnostico(): Promise<unknown> {
       vibracao_240hz: leituras["vibracao_240hz"] ?? null,
       corrente_primario: leituras["corrente_primario"] ?? null,
       corrente_secundario: leituras["corrente_secundario"] ?? null,
+      // Inrush e evento discreto. Quando nao ha pico recente, leitura nao
+      // aparece nos ultimos 15s -> Python recebe null -> default 0 -> "ausente".
+      inrush: leituras["inrush"] ?? null,
       correlacao_cv: correlacao_cv > 0 ? correlacao_cv : null,
       vida_consumida: vidaConsumida > 0 ? vidaConsumida : null,
     };
 
     const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {
       stdio: ["pipe", "pipe", "pipe"],
+      // Garante UTF-8 no stdout do Python (Windows usa cp1252 por default em
+      // pipes nao-TTY, o que quebra caracteres como Δ e acentos das mensagens).
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
 
     let stdout = "";

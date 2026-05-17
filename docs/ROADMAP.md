@@ -219,12 +219,15 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 
 ### Motor fuzzy (Python)
 
-- [x] 17+ regras Mamdani cobrindo falhas térmicas, mecânicas, elétricas e harmônicas
+- [x] 32 regras Mamdani cobrindo falhas térmicas, mecânicas, elétricas, harmônicas e inrush
 - [x] Defuzzificação por centróide
 - [x] Subprocess chamado pelo server a cada ciclo
 - [x] Correlação CV (corrente × vibração)
 - [x] Vida residual via Arrhenius
 - [x] Tendência preditiva (regressão linear)
+- [x] **Universos recalibrados pra escala do projeto** (g, A baixo) — antes calibrado pra industrial (mm/s, 200A) e nunca disparava
+- [x] **Inrush como input fuzzy** (variável + 4 regras + bloco diagnóstico textual)
+- [x] **PYTHONIOENCODING=utf-8** no spawn — evita UnicodeEncodeError com Δ nas mensagens
 
 ### Persistência
 

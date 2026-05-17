@@ -10,12 +10,15 @@ Uso:
 Formato de entrada (stdin):
   {
     "timestamp": 1234567890,
-    "temperatura": 55.0,        // °C
-    "delta_t": 8.0,             // °C
-    "vibracao_120hz": 3.5,      // mm/s (ou g)
-    "vibracao_240hz": 2.0,      // mm/s (ou g)
-    "corrente_primario": 80.0,  // A
-    "corrente_secundario": 240.0 // A
+    "temperatura": 55.0,         // °C       universo 0-120
+    "delta_t": 8.0,              // °C       universo 0-40
+    "vibracao_120hz": 0.08,      // g        universo 0-1.0
+    "vibracao_240hz": 0.04,      // g        universo 0-0.5
+    "corrente_primario": 2.8,    // A/Vrms   universo 0-10  (transformador pequeno)
+    "corrente_secundario": 22.0, // A/Vrms   universo 0-60
+    "inrush": 0,                 // A/Vpico  universo 0-10  (0 = ausente)
+    "correlacao_cv": 45,         // %        universo 0-100 (opcional)
+    "vida_consumida": 0.03       // fração   universo 0-1   (opcional)
   }
 
 Formato de saída (stdout):
@@ -47,6 +50,7 @@ TOPICOS = {
     "vibracao_240hz": "Vibração 240Hz (Harmônicos)",
     "corrente_primario": "Corrente do Primário",
     "corrente_secundario": "Corrente do Secundário",
+    "inrush": "Pico de Inrush",
 }
 
 NIVEIS = {0: "baixo", 25: "moderado", 50: "alto", 75: "critico"}
@@ -71,12 +75,14 @@ def _built_system():
     fsis = FuzzyInferenceSystem()
 
     # --- Input: Temperature (0-120 °C) ---
+    # Recalibrado p/ baseline operacional ~55°C ser "normal" full.
+    # LIMITES.temperatura: aviso=70, critico=85.
     temperatura = (
         FuzzyVariable("temperatura", 0, 120)
-        .add_term("normal", LeftEdge(40, 55))
-        .add_term("morna", Trapezoid(45, 55, 60, 70))
-        .add_term("quente", Trapezoid(65, 75, 80, 90))
-        .add_term("critica", RightEdge(85, 100))
+        .add_term("normal", LeftEdge(55, 65))
+        .add_term("morna", Trapezoid(60, 68, 72, 78))
+        .add_term("quente", Trapezoid(72, 78, 82, 88))
+        .add_term("critica", RightEdge(85, 95))
     )
 
     # --- Input: Delta-T (0-40 °C) ---
@@ -88,39 +94,55 @@ def _built_system():
         .add_term("severo", RightEdge(30, 36))
     )
 
-    # --- Input: Vibration 120Hz (0-15 mm/s) ---
+    # --- Input: Vibration 120Hz (0-1.0 g) ---
+    # Recalibrado: escala g pequena (firmware publica em g via MPU6050+FFT).
+    # Limiares batem com packages/shared/src/constants.ts::LIMITES.vibracao120hz
+    # (aviso=0.20, critico=0.45).
     vib120 = (
-        FuzzyVariable("vibracao_120hz", 0, 15)
-        .add_term("normal", LeftEdge(3, 5))
-        .add_term("moderada", Trapezoid(4, 5.5, 7, 8.5))
-        .add_term("forte", Trapezoid(7.5, 9, 10, 11.5))
-        .add_term("severa", RightEdge(11, 13))
+        FuzzyVariable("vibracao_120hz", 0, 1.0)
+        .add_term("normal", LeftEdge(0.10, 0.18))
+        .add_term("moderada", Trapezoid(0.15, 0.22, 0.30, 0.40))
+        .add_term("forte", Trapezoid(0.35, 0.45, 0.55, 0.65))
+        .add_term("severa", RightEdge(0.55, 0.75))
     )
 
-    # --- Input: Vibration 240Hz (0-10 mm/s) ---
+    # --- Input: Vibration 240Hz (0-0.5 g) ---
+    # LIMITES.vibracao240hz: aviso=0.10, critico=0.25.
     vib240 = (
-        FuzzyVariable("vibracao_240hz", 0, 10)
-        .add_term("normal", LeftEdge(2, 3.5))
-        .add_term("moderada", Trapezoid(3, 4, 5, 6))
-        .add_term("alta", RightEdge(5.5, 7))
+        FuzzyVariable("vibracao_240hz", 0, 0.5)
+        .add_term("normal", LeftEdge(0.05, 0.10))
+        .add_term("moderada", Trapezoid(0.08, 0.12, 0.18, 0.22))
+        .add_term("alta", RightEdge(0.20, 0.30))
     )
 
-    # --- Input: Primary Current (0-200 A) ---
+    # --- Input: Primary Current (0-10 A/Vrms) ---
+    # Baseline ~2.8 A = "normal" full. LIMITES.correntePrimario: aviso=4.0, critico=6.0.
     corrente_p = (
-        FuzzyVariable("corrente_primario", 0, 200)
-        .add_term("normal", LeftEdge(60, 90))
-        .add_term("elevada", Trapezoid(80, 100, 120, 140))
-        .add_term("alta", Trapezoid(130, 150, 165, 180))
-        .add_term("sobrecarga", RightEdge(175, 190))
+        FuzzyVariable("corrente_primario", 0, 10)
+        .add_term("normal", LeftEdge(3.0, 3.8))
+        .add_term("elevada", Trapezoid(3.5, 4.2, 4.8, 5.2))
+        .add_term("alta", Trapezoid(4.8, 5.5, 6.0, 6.8))
+        .add_term("sobrecarga", RightEdge(6.5, 8.0))
     )
 
-    # --- Input: Secondary Current (0-600 A) ---
+    # --- Input: Secondary Current (0-60 A) ---
+    # Baseline ~22 A = "normal" full. LIMITES.correnteSecundario: aviso=30, critico=45.
     corrente_s = (
-        FuzzyVariable("corrente_secundario", 0, 600)
-        .add_term("normal", LeftEdge(180, 270))
-        .add_term("elevada", Trapezoid(240, 300, 360, 420))
-        .add_term("alta", Trapezoid(390, 450, 510, 550))
-        .add_term("sobrecarga", RightEdge(530, 580))
+        FuzzyVariable("corrente_secundario", 0, 60)
+        .add_term("normal", LeftEdge(22, 28))
+        .add_term("elevada", Trapezoid(25, 32, 38, 42))
+        .add_term("alta", Trapezoid(38, 44, 48, 52))
+        .add_term("sobrecarga", RightEdge(50, 56))
+    )
+
+    # --- Input: Inrush Peak (0-10 A/Vpico) ---
+    # Pico de magnetizacao. LIMITES.inrushPrimario: aviso=1.5, critico=3.0.
+    # Quando nao ha evento de inrush recente, valor cai pra 0 -> "ausente".
+    inrush = (
+        FuzzyVariable("inrush", 0, 10)
+        .add_term("ausente", LeftEdge(0.3, 0.8))
+        .add_term("presente", Trapezoid(0.5, 1.5, 2.5, 3.5))
+        .add_term("severo", RightEdge(3.0, 5.0))
     )
 
     # --- Input: Current × Vibration Correlation (0-100) ---
@@ -156,7 +178,7 @@ def _built_system():
         .add_term("alta", RightEdge(55, 75))
     )
 
-    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, correlacao_cv, vida_consumida, risco, urgencia]:
+    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, inrush, correlacao_cv, vida_consumida, risco, urgencia]:
         fsis.add_variable(var)
 
     R = lambda a, c, w=1.0: fsis.add_rule(a, c, w)
@@ -206,6 +228,12 @@ def _built_system():
     R([("vida_consumida", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
     R([("vida_consumida", "media"), ("temperatura", "quente")], [("risco_operacional", "moderado")], 0.6)
 
+    # === Inrush current ===
+    R([("inrush", "severo")], [("risco_operacional", "critico"), ("urgencia_intervencao", "alta")], 1.0)
+    R([("inrush", "presente"), ("temperatura", "quente")], [("risco_operacional", "critico"), ("urgencia_intervencao", "alta")], 0.9)
+    R([("inrush", "presente"), ("corrente_primario", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+    R([("inrush", "presente")], [("risco_operacional", "moderado")], 0.5)
+
     # === Normal operation ===
     R(
         [
@@ -252,12 +280,12 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
             "valor_atual": temp,
         })
         grandezas_criticas.add("temperatura")
-    elif temp > 65 and termos.get("alto", 0) > 0.3:
+    elif temp > 70:
         diagnosticos.append({
             "tipo": "temperatura_elevada",
             "severidade": "aviso",
             "titulo": "Temperatura Elevada",
-            "mensagem": "Temperatura do núcleo elevada. Monitorar degradação da isolação.",
+            "mensagem": f"Temperatura do núcleo elevada ({temp}°C). Monitorar degradação da isolação.",
             "recomendacao": "Monitorar evolução da temperatura, verificar carga e condições de ventilação.",
             "grandeza": "temperatura",
             "valor_atual": temp,
@@ -301,23 +329,23 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
         grandezas_criticas.add("delta_t")
 
     # Vibration 120Hz - Mechanical
-    if v120 > 11:
+    if v120 > 0.45:
         diagnosticos.append({
             "tipo": "vibracao_mecanica_critica",
             "severidade": "critico",
             "titulo": "Falha Mecânica Crítica",
-            "mensagem": "CRÍTICO: Vibração 120Hz muito elevada. Risco de dano estrutural ao núcleo magnético.",
+            "mensagem": f"CRÍTICO: Vibração 120Hz muito elevada ({v120} g). Risco de dano estrutural ao núcleo magnético.",
             "recomendacao": "Parar máquina imediatamente. Inspecionar aperto das chapas do núcleo e integridade estrutural.",
             "grandeza": "vibracao_120hz",
             "valor_atual": v120,
         })
         grandezas_criticas.add("vibracao_120hz")
-    elif v120 > 7:
+    elif v120 > 0.20:
         diagnosticos.append({
             "tipo": "vibracao_mecanica",
             "severidade": "aviso",
             "titulo": "Manutenção Mecânica",
-            "mensagem": f"MANUTENÇÃO: Assinatura de vibração (120Hz) com amplitude {v120} fora do padrão. Realizar aperto mecânico estrutural no núcleo magnético.",
+            "mensagem": f"MANUTENÇÃO: Assinatura de vibração (120Hz) com amplitude {v120} g fora do padrão. Realizar aperto mecânico estrutural no núcleo magnético.",
             "recomendacao": "Realizar aperto mecânico das chapas do núcleo magnético e inspeção estrutural.",
             "grandeza": "vibracao_120hz",
             "valor_atual": v120,
@@ -325,24 +353,24 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
         grandezas_criticas.add("vibracao_120hz")
 
     # Vibration 240Hz - Harmonics
-    if v240 > 5:
-        sev = "critico" if v240 > 7 else "aviso"
+    if v240 > 0.20:
+        sev = "critico" if v240 > 0.25 else "aviso"
         diagnosticos.append({
             "tipo": "harmonico_rede",
             "severidade": sev,
             "titulo": "Distorção Harmônica",
-            "mensagem": f"{'CRÍTICO' if sev == 'critico' else 'ALERTA'}: Elevado ruído harmônico na rede (THD > Limite). Sugere-se projeto/instalação de filtros EMI/RFI.",
+            "mensagem": f"{'CRÍTICO' if sev == 'critico' else 'ALERTA'}: Elevado ruído harmônico na rede (THD > Limite, {v240} g em 240Hz). Sugere-se projeto/instalação de filtros EMI/RFI.",
             "recomendacao": "Realizar análise de qualidade de energia. Projetar e instalar filtros harmônicos passivos ou ativos.",
             "grandeza": "vibracao_240hz",
             "valor_atual": v240,
         })
         grandezas_criticas.add("vibracao_240hz")
-    elif v240 > 3.5:
+    elif v240 > 0.10:
         diagnosticos.append({
             "tipo": "harmonico_atencao",
             "severidade": "aviso",
             "titulo": "Ruído Harmônico",
-            "mensagem": f"Ruído harmônico detectado ({v240} em 240Hz). Possível distorção na rede elétrica.",
+            "mensagem": f"Ruído harmônico detectado ({v240} g em 240Hz). Possível distorção na rede elétrica.",
             "recomendacao": "Monitorar conteúdo harmônico e verificar cargas não-lineares conectadas.",
             "grandeza": "vibracao_240hz",
             "valor_atual": v240,
@@ -350,23 +378,23 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
         grandezas_criticas.add("vibracao_240hz")
 
     # Primary current
-    if ip > 175:
+    if ip > 6.0:
         diagnosticos.append({
             "tipo": "sobrecarga_primario",
             "severidade": "critico",
             "titulo": "Sobrecarga no Primário",
-            "mensagem": "CRÍTICO: Sobrecarga no primário. Risco de danos ao enrolamento.",
+            "mensagem": f"CRÍTICO: Sobrecarga no primário ({ip} A). Risco de danos ao enrolamento.",
             "recomendacao": "Reduzir carga imediatamente. Verificar condições da rede e dimensionamento do transformador.",
             "grandeza": "corrente_primario",
             "valor_atual": ip,
         })
         grandezas_criticas.add("corrente_primario")
-    elif ip > 130:
+    elif ip > 4.0:
         diagnosticos.append({
             "tipo": "corrente_primario_elevada",
             "severidade": "aviso",
             "titulo": "Corrente Primária Elevada",
-            "mensagem": "Corrente primária elevada. Verificar carga e condições da rede.",
+            "mensagem": f"Corrente primária elevada ({ip} A). Verificar carga e condições da rede.",
             "recomendacao": "Verificar carga conectada e condições da rede de alimentação.",
             "grandeza": "corrente_primario",
             "valor_atual": ip,
@@ -374,30 +402,55 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
         grandezas_criticas.add("corrente_primario")
 
     # Secondary current
-    if is_ > 530:
+    if is_ > 45:
         diagnosticos.append({
             "tipo": "sobrecarga_secundario",
             "severidade": "critico",
             "titulo": "Sobrecarga no Secundário",
-            "mensagem": "CRÍTICO: Sobrecarga no secundário. Risco de aquecimento excessivo.",
+            "mensagem": f"CRÍTICO: Sobrecarga no secundário ({is_} A). Risco de aquecimento excessivo.",
             "recomendacao": "Reduzir carga no secundário. Verificar carga conectada e dimensionamento.",
             "grandeza": "corrente_secundario",
             "valor_atual": is_,
         })
         grandezas_criticas.add("corrente_secundario")
-    elif is_ > 390:
+    elif is_ > 30:
         diagnosticos.append({
             "tipo": "corrente_secundario_elevada",
             "severidade": "aviso",
             "titulo": "Corrente Secundária Elevada",
-            "mensagem": "Corrente secundária elevada. Verificar carga conectada.",
+            "mensagem": f"Corrente secundária elevada ({is_} A). Verificar carga conectada.",
             "recomendacao": "Verificar carga conectada ao secundário do transformador.",
             "grandeza": "corrente_secundario",
             "valor_atual": is_,
         })
         grandezas_criticas.add("corrente_secundario")
 
-    # Cross-variable: arcing
+    # Inrush peak
+    inrush_val = inputs.get("inrush", 0)
+    if inrush_val > 3.0:
+        diagnosticos.append({
+            "tipo": "inrush_severo",
+            "severidade": "critico",
+            "titulo": "Pico de Inrush Severo",
+            "mensagem": f"CRÍTICO: Pico de corrente de magnetização de {inrush_val} no primário. Estresse mecânico nos enrolamentos e risco de saturação repetida do núcleo.",
+            "recomendacao": "Avaliar pré-magnetização, verificar relé de proteção e dimensionamento do disjuntor de entrada. Investigar causa: chaveamento sem ramp, descarga capacitiva ou falta seguida de retorno.",
+            "grandeza": "inrush",
+            "valor_atual": inrush_val,
+        })
+        grandezas_criticas.add("inrush")
+    elif inrush_val > 1.5:
+        diagnosticos.append({
+            "tipo": "inrush_presente",
+            "severidade": "aviso",
+            "titulo": "Pico de Inrush Detectado",
+            "mensagem": f"AVISO: Surto de energização ({inrush_val}) acima do limite operacional. Repetições podem acelerar fadiga das chapas do núcleo.",
+            "recomendacao": "Monitorar frequência de eventos de inrush. Avaliar uso de soft-start ou relé de pré-inserção.",
+            "grandeza": "inrush",
+            "valor_atual": inrush_val,
+        })
+        grandezas_criticas.add("inrush")
+
+    # Cross-variable: arcing (ratio is/ip elevado + temp elevada)
     if ip > 0:
         ratio = is_ / ip
         if ratio > 20 and temp > 60:
@@ -413,7 +466,7 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
             grandezas_criticas.add("arco_eletrico")
 
     # Cross-variable: combined mechanical + electrical
-    if v120 > 5 and v240 > 3 and ip > 100:
+    if v120 > 0.25 and v240 > 0.12 and ip > 4.5:
         diagnosticos.append({
             "tipo": "estresse_combinado",
             "severidade": "aviso",
