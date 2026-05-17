@@ -1,5 +1,12 @@
 import { useMemo } from "react";
-import { LineChart, Line, ResponsiveContainer, YAxis } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
 type Props = {
   titulo: string;
@@ -13,37 +20,43 @@ export default function WaveformChart({ titulo, amostras, cor = "#22c55e" }: Pro
     return amostras.map((v, i) => ({ i, v }));
   }, [amostras]);
 
+  const chartConfig = {
+    v: { label: "Amplitude", color: cor },
+  } satisfies ChartConfig;
+
   return (
-    <div className="rounded-lg bg-black/90 p-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] font-mono text-green-400/80">{titulo}</span>
-        {amostras.length > 0 && (
-          <span className="text-[9px] font-mono text-green-400/60">
-            {amostras.length} pts | {Math.max(...amostras).toFixed(2)} pico
-          </span>
-        )}
-      </div>
-      <div className="h-20">
-        {amostras.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <YAxis domain={[-1.5, 1.5]} hide />
-              <Line
-                type="monotone"
-                dataKey="v"
-                stroke={cor}
-                strokeWidth={1.5}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex items-center justify-center h-full text-[10px] text-green-400/40 font-mono">
-            -- -- -- Sem sinal -- -- --
-          </div>
-        )}
-      </div>
-    </div>
+    <Card className="ring-0 shadow-sm border-0">
+      <CardHeader>
+        <CardTitle className="text-sm">{titulo}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
+          <LineChart data={data} accessibilityLayer>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="i" tickLine={false} axisLine={false} tickMargin={8} />
+            <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={["auto", "auto"]} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(_v, p) => {
+                    const i = p?.[0]?.payload?.i;
+                    return i != null ? `Amostra ${i}` : "";
+                  }}
+                  formatter={(value) => `${Number(value ?? 0).toFixed(3)}`}
+                />
+              }
+            />
+            <Line
+              type="monotone"
+              dataKey="v"
+              stroke={`var(--color-v)`}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ChartContainer>
+      </CardContent>
+    </Card>
   );
 }

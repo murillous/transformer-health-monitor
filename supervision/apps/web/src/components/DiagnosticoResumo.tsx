@@ -23,7 +23,24 @@ const corTexto: Record<string, string> = {
 };
 
 export default function DiagnosticoResumo({ diagnostico, onNavigate }: Props) {
-  if (!diagnostico) return null;
+  if (!diagnostico) {
+    return (
+      <Card className="ring-0 shadow-sm border-0 border-l-4 border-l-gray-300 opacity-60">
+        <CardContent className="p-4 flex flex-col h-full">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Diagnóstico</span>
+            <LedIndicator severity="ok" />
+          </div>
+          <div className="mt-2">
+            <span className="text-2xl font-bold text-muted-foreground">---</span>
+          </div>
+          <div className="mt-auto flex items-center justify-between pt-1">
+            <span className="text-xs text-muted-foreground">aguardando dados</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const { risco_operacional, diagnosticos, severidade_geral } = diagnostico;
 

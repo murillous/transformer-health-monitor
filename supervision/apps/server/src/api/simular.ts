@@ -57,10 +57,11 @@ function gerarEspectro(vib120: number, vib240: number): { freq: number; amplitud
 const AMOSTRAS = 128;
 
 function gerarFormaOnda(fundamental: number, harm2: number, harm4: number): number[] {
+  const escala = Math.min(1.5, Math.max(0.2, Math.abs(fundamental) * 0.3));
   const onda: number[] = [];
   for (let i = 0; i < AMOSTRAS; i++) {
     const t = i / AMOSTRAS;
-    const amp = Math.sin(2 * Math.PI * t) * 0.8
+    const amp = Math.sin(2 * Math.PI * t) * escala
       + Math.sin(2 * Math.PI * 2 * t) * harm2 * 2
       + Math.sin(2 * Math.PI * 4 * t) * harm4 * 3;
     onda.push(Math.round(amp * 1000) / 1000);
@@ -68,9 +69,25 @@ function gerarFormaOnda(fundamental: number, harm2: number, harm4: number): numb
   return onda;
 }
 
+function gerarFormaOndaComRuido(fundamental: number, harm2: number, harm4: number): number[] {
+  const escala = Math.min(1.5, Math.max(0.2, Math.abs(fundamental) * 0.3));
+  const onda: number[] = [];
+  for (let i = 0; i < AMOSTRAS; i++) {
+    const t = i / AMOSTRAS;
+    const amp = Math.sin(2 * Math.PI * t) * escala
+      + Math.sin(2 * Math.PI * 2 * t) * harm2 * 2
+      + Math.sin(2 * Math.PI * 4 * t) * harm4 * 3;
+    const noisy = amp * (1 + (Math.random() - 0.5) * 0.04);
+    onda.push(Math.round(noisy * 1000) / 1000);
+  }
+  return onda;
+}
+
 export function createSimuladorRouter(wsHub: WebSocketHub): Router {
   const router = Router();
   let intervalo: ReturnType<typeof setInterval> | null = null;
+  let intervaloOnda: ReturnType<typeof setInterval> | null = null;
+  let ultimasLeituras: Record<string, number> = {};
 
   router.post("/iniciar", (_req, res) => {
     if (intervalo) return res.json({ ok: true });
@@ -112,6 +129,8 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
         }
       }
 
+      ultimasLeituras = valores;
+
       wsHub.broadcast({
         topico: TOPICOS_MQTT.heartbeat,
         ts: Math.floor(Date.now() / 1000),
@@ -128,26 +147,31 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
         ),
       });
 
-      // Waveforms (corrente + vibração)
-      const ondaCorrenteP = gerarFormaOnda(
-        valores[TOPICOS_MQTT.correntePrimario] ?? 2.8,
-        valores[TOPICOS_MQTT.vibracao120hz] / 10,
-        valores[TOPICOS_MQTT.vibracao240hz] / 5,
-      );
-      const ondaCorrenteS = gerarFormaOnda(
-        valores[TOPICOS_MQTT.correnteSecundario] ?? 22,
-        valores[TOPICOS_MQTT.vibracao120hz] / 10,
-        valores[TOPICOS_MQTT.vibracao240hz] / 5,
-      );
-      wsHub.broadcast({ topico: "onda_corrente_primario", ts: Math.floor(Date.now() / 1000), amostras: ondaCorrenteP });
-      wsHub.broadcast({ topico: "onda_corrente_secundario", ts: Math.floor(Date.now() / 1000), amostras: ondaCorrenteS });
-
       executarDiagnostico()
         .then((diag) => {
           wsHub.broadcast({ topico: "diagnostico", ts: Math.floor(Date.now() / 1000), diagnostico: diag });
         })
         .catch(() => {});
-    }, 1500);
+    }, 1000);
+
+    intervaloOnda = setInterval(() => {
+      const leituras = ultimasLeituras;
+      if (Object.keys(leituras).length === 0) return;
+
+      const ondaP = gerarFormaOndaComRuido(
+        leituras[TOPICOS_MQTT.correntePrimario] ?? 2.8,
+        leituras[TOPICOS_MQTT.vibracao120hz] / 10,
+        leituras[TOPICOS_MQTT.vibracao240hz] / 5,
+      );
+      const ondaS = gerarFormaOndaComRuido(
+        leituras[TOPICOS_MQTT.correnteSecundario] ?? 22,
+        leituras[TOPICOS_MQTT.vibracao120hz] / 10,
+        leituras[TOPICOS_MQTT.vibracao240hz] / 5,
+      );
+
+      wsHub.broadcast({ topico: "onda_corrente_primario", ts: Math.floor(Date.now() / 1000), amostras: ondaP });
+      wsHub.broadcast({ topico: "onda_corrente_secundario", ts: Math.floor(Date.now() / 1000), amostras: ondaS });
+    }, 200);
 
     res.json({ ok: true });
   });
@@ -156,6 +180,10 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
     if (intervalo) {
       clearInterval(intervalo);
       intervalo = null;
+    }
+    if (intervaloOnda) {
+      clearInterval(intervaloOnda);
+      intervaloOnda = null;
     }
     res.json({ ok: true });
   });
