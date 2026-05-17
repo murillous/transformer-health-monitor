@@ -116,7 +116,26 @@ function fmtGrandeza(g: string): string {
 }
 
 export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: Props) {
-  if (!diagnostico) return null;
+  if (!diagnostico) {
+    return (
+      <Card className="ring-0 shadow-sm border-0">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            Diagnóstico Inteligente
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Brain className="h-8 w-8 mb-2 opacity-40" />
+            <p className="text-sm">Aguardando dados do diagnóstico...</p>
+            <p className="text-xs mt-1">O diagnóstico será exibido automaticamente quando houver leituras dos sensores.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp, vida_residual, tendencias, predicoes } = diagnostico;
   const sevGeralLED =
