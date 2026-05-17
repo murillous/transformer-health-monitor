@@ -51,12 +51,11 @@ function PaginationLink({ isActive, disabled, className, children, ...props }: P
 function PaginationPrevious({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
   return (
     <PaginationLink
-      aria-label="Ir para anterior"
-      className={cn("gap-1 pl-2.5", className)}
+      aria-label="Página anterior"
+      className={cn("", className)}
       {...props}
     >
       <ChevronLeft className="size-3.5" />
-      <span>Anterior</span>
     </PaginationLink>
   )
 }
@@ -64,11 +63,10 @@ function PaginationPrevious({ className, ...props }: React.ComponentProps<typeof
 function PaginationNext({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
   return (
     <PaginationLink
-      aria-label="Ir para próximo"
-      className={cn("gap-1 pr-2.5", className)}
+      aria-label="Próxima página"
+      className={cn("", className)}
       {...props}
     >
-      <span>Próximo</span>
       <ChevronRight className="size-3.5" />
     </PaginationLink>
   )
