@@ -33,8 +33,8 @@ Sistema embarcado de monitoramento contínuo para transformadores elétricos, ca
 └──────────────────────┬──────────────────────────────┘
                        │ paho-mqtt
 ┌──────────────────────▼──────────────────────────────┐
-│         CAMADA DE APLICAÇÃO — IHM Python             │
-│       Dashboard · Alertas · Lógica de diagnóstico    │
+│       CAMADA DE APLICAÇÃO — Supervision (TS + fuzzy) │
+│   Dashboard React · Alertas · Diagnóstico fuzzy      │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
@@ -70,15 +70,23 @@ diagnostico_transformador/
 ├── lib/                      # Bibliotecas locais
 ├── proteus/
 │   └── MicroProject_3.0.pdsprj  # Projeto de simulação Proteus
-├── ihm/
-│   ├── dashboard.py          # Interface gráfica (Streamlit/NiceGUI)
-│   ├── mqtt_client.py        # Subscriber MQTT com fila de dados
-│   ├── processor.py          # Lógica de diagnóstico e alertas
-│   ├── datalogger.py         # Gravação CSV e geração de PDF
-│   └── ponte_serial_mqtt.py  # Bridge Serial→MQTT para demo Proteus
+├── supervision/                 # Stack de supervisão (TypeScript + Python fuzzy)
+│   ├── apps/
+│   │   ├── server/              # Express + MQTT subscriber + WebSocket (:3001)
+│   │   ├── web/                 # Dashboard React + Vite (:5173)
+│   │   └── intelligence/        # Motor fuzzy Python (subprocess)
+│   └── packages/shared/         # Tipos e constantes compartilhadas
+├── tools/serial_bridge/         # Ponte Serial Proteus → MQTT (Python)
+│   ├── bridge.py
+│   └── requirements.txt
 ├── docs/
-│   ├── projeto_transformador.tex  # Documentação técnica LaTeX
-│   └── projeto_transformador.pdf  # PDF compilado
+│   ├── 01-setup.md              # Setup completo do ambiente
+│   ├── 02-arquitetura.md        # Arquitetura do firmware
+│   ├── 03-mqtt.md               # Protocolo MQTT do projeto
+│   ├── 04-padroes-codigo.md     # Convenções
+│   ├── 05-pegadinhas-proteus.md # Pegadinhas do simulador
+│   ├── ROADMAP.md               # Status do projeto
+│   └── Diagnostico_transformador.{tex,pdf}  # Doc técnica LaTeX
 ├── platformio.ini
 └── README.md
 ```
@@ -182,13 +190,15 @@ A seleção entre os dois caminhos é automática, controlada por `#if defined(E
 [MQTT] transformador/vibracao/aceleracao -> {"ts":4,"valor":0.0000,"unidade":"g"}
 [MQTT] transformador/vibracao/fft_120hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
 [MQTT] transformador/vibracao/fft_240hz -> {"ts":4,"valor":0.0000,"unidade":"g"}
+[MQTT] transformador/vibracao/espectro -> {"ts":4,"espectro":[{"freq":16,"amplitude":0.0012},...]}
+[MQTT] transformador/status/heartbeat -> {"ts":4,"valor":4.0000,"unidade":"s"}
 ```
 
 Esse é literalmente o payload que será publicado no broker no hardware físico. Toda a estrutura — hierarquia de tópicos, formato JSON, timestamp — está validada já na simulação.
 
 ### Ponte Serial→MQTT para demonstrações
 
-Para apresentar o sistema completo durante a entrega da simulação (18/05), o script `ihm/ponte_serial_mqtt.py` lê a porta COM virtual do Proteus, extrai os payloads das linhas `[MQTT]` e republica no broker Mosquitto local. Isso permite demonstrar **simulação → broker MQTT → IHM Python** funcionando ponta a ponta, mesmo sem WiFi.
+Como o Proteus não tem stack TCP/IP, o script `tools/serial_bridge/bridge.py` faz a ponte: lê a porta COM virtual exposta pelo componente **COMPIM** do esquemático, extrai os payloads das linhas `[MQTT]` via regex, reescreve o `ts` para timestamp Unix e republica no broker Mosquitto local. O servidor da pasta `supervision/` então consome o broker e propaga para o dashboard via WebSocket. Detalhes em [`docs/01-setup.md`](./docs/01-setup.md) e [`docs/03-mqtt.md`](./docs/03-mqtt.md).
 
 ---
 
@@ -201,7 +211,7 @@ Para apresentar o sistema completo durante a entrega da simulação (18/05), o s
 | DS18B20 (OneWire) | D4 | GPIO4 | Mesmo número por conveniência |
 | MPU6050 SDA | A4 | GPIO21 | Wire.h funciona igual nos dois |
 | MPU6050 SCL | A5 | GPIO22 | Wire.h funciona igual nos dois |
-| Serial TX | D1/TXD | GPIO1 | Virtual Terminal no Proteus |
+| Serial TX | D1/TXD | GPIO1 (USB-Serial) | Virtual Terminal + COMPIM no Proteus |
 
 > **Nota:** A troca entre plataformas não exige modificações manuais no código. O arquivo `config.h` detecta a plataforma de compilação via `#if defined(ESP32)` e ajusta automaticamente `VREF` (5V → 3,3V), `ADC_RES` (1023 → 4095) e `BIAS` (2,5V → 1,65V).
 
@@ -217,10 +227,11 @@ Para apresentar o sistema completo durante a entrega da simulação (18/05), o s
 | `transformador/nucleo/temperatura` | Temperatura absoluta | °C |
 | `transformador/nucleo/delta_t` | Gradiente térmico | °C |
 | `transformador/vibracao/aceleracao` | Aceleração eixo Z | g |
-| `transformador/vibracao/fft_120hz` | Amplitude em 120Hz | g |
-| `transformador/vibracao/fft_240hz` | Amplitude em 240Hz | g |
-| `transformador/status/alarme` | JSON estruturado | — |
-| `transformador/status/heartbeat` | Timestamp Unix | s |
+| `transformador/vibracao/fft_120hz` | Amplitude no bin próximo a 120Hz | g |
+| `transformador/vibracao/fft_240hz` | Amplitude no bin próximo a 240Hz | g |
+| `transformador/vibracao/espectro` | Array completo de bins do FFT (15 bins, 16-234Hz) | g por bin |
+| `transformador/status/alarme` | JSON estruturado com `tipo`, `severidade`, `valor`, `limite`, `mensagem` | — |
+| `transformador/status/heartbeat` | Uptime do firmware (UNO) ou Unix time (ESP32) | s |
 
 **Formato do payload:**
 
@@ -238,45 +249,61 @@ Para apresentar o sistema completo durante a entrega da simulação (18/05), o s
 {
   "ts": 1748000000,
   "tipo": "vibracao_120hz",
-  "severidade": "warning",
+  "severidade": "aviso",
   "valor": 0.42,
   "limite": 0.20,
   "mensagem": "Vibracao em 120Hz acima do limite"
 }
 ```
 
+**Formato do payload de espectro:**
+
+```json
+{
+  "ts": 1748000000,
+  "espectro": [
+    { "freq": 16,  "amplitude": 0.0012 },
+    { "freq": 31,  "amplitude": 0.0024 },
+    { "freq": 125, "amplitude": 0.1840 },
+    { "freq": 234, "amplitude": 0.0921 }
+  ]
+}
+```
+
+> Range derivado do FFT atual (32 amostras @ 500Hz): bins 1..15 cobrindo 16-234Hz. Nyquist = 250Hz.
+
 ---
 
-## Como Rodar — Simulação no Proteus
+## Como Rodar — Pipeline Completo (Simulação Proteus → Dashboard)
 
-### Pré-requisitos
+> Tutorial passo-a-passo detalhado em [`docs/01-setup.md`](./docs/01-setup.md). Abaixo está o fluxo macro.
 
-- Proteus 8.x com biblioteca MPU6050 da [ElectronicTree](https://electronicstree.com/new-mpu6050-proteus-library/) instalada
-- PlatformIO (VSCode) com as bibliotecas abaixo instaladas:
+### Pré-requisitos (instalar uma vez)
 
-```ini
-; platformio.ini
-[env:uno]
-platform = atmelavr
-board = uno
-framework = arduino
-lib_deps =
-    paulstoffregen/OneWire @ ^2.3.8
-    milesburton/DallasTemperature @ ^3.11.0
-    kosme/arduinoFFT @ ^2.0.1
-```
+- **PlatformIO** (extensão VSCode) com Proteus 8.x + biblioteca MPU6050 da [ElectronicTree](https://electronicstree.com/new-mpu6050-proteus-library/)
+- **Mosquitto** rodando em `localhost:1883` com `allow_anonymous true`
+- **com0com** (Windows) ou **socat** (Linux) — par de portas COM virtuais para a ponte Serial→MQTT
+- **Node.js 20+** e **Python 3.10+** para a stack `supervision/` e a ponte
+- Bibliotecas firmware já listadas em [`platformio.ini`](./platformio.ini)
 
 ### Passo a passo
 
-1. Abra o projeto no VSCode com PlatformIO
-2. Compile: `PlatformIO: Build` (atalho `Ctrl+Alt+B`)
-3. Localize o `.hex` gerado em `.pio/build/uno/firmware.hex`
-4. Copie o `.hex` para a pasta `proteus/`
-5. Abra `proteus/MicroProject_3.0.pdsprj`
-6. Clique duplo no Arduino UNO → campo **Program File** → selecione o `.hex`
-7. Dê **Play** na simulação
-8. Clique duplo no **Virtual Terminal** para ver o Serial Monitor
-9. Ajuste **Roll / Pitch / Yaw** no MPU6050 para simular movimento
+1. **Compilar firmware:** abrir o projeto no VSCode → `pio run -e uno` → `.hex` sai em `.pio/build/uno/firmware.hex`.
+2. **Carregar no Proteus:** abrir `proteus/MicroProject_3.0.pdsprj` → clique duplo no Arduino UNO → campo **Program File** → apontar para o `.hex`.
+3. **Configurar COMPIM no esquemático:** componente `COMPIM` conectado ao TXD do Arduino (TXD do UNO ligado ao **TXD do COMPIM** — não RXD), propriedade `Physical port` apontando para uma das pontas do par virtual (ex.: `COM4`), baud `9600`.
+4. **Subir a ponte:** `python tools/serial_bridge/bridge.py --port COM5 --baud 9600 --broker localhost` — lê a outra ponta do par virtual e republica no broker.
+5. **Subir o servidor de supervisão:** `cd supervision && npm install && npm run dev` — sobe Express :3001 + Vite :5173.
+6. **Dar Play no Proteus.** Em ~2s, dados começam a fluir do Proteus → ponte → broker → server → dashboard.
+7. **Abrir o dashboard:** `http://localhost:5173`. Cards de temperatura, ΔT, correntes, vibração e espectro FFT começam a atualizar em tempo real. Diagnóstico fuzzy roda a cada ciclo.
+
+### Validação intermediária
+
+| Etapa | Comando de validação | Esperado |
+|---|---|---|
+| Mosquitto ok | `mosquitto_pub -h localhost -t teste -m ping` + `mosquitto_sub -h localhost -t teste -v` em outro terminal | Mensagem aparece no `_sub` |
+| com0com ok | escrever em uma ponta, ler na outra com `pyserial` | Bytes idênticos |
+| COMPIM ok | `mosquitto_sub -h localhost -t "transformador/#" -v` durante Play do Proteus + ponte rodando | Tópicos chegando em tempo real |
+| Dashboard ok | abrir `http://localhost:5173` | Cards ativos sem disparar o simulador (`/api/simular/iniciar`) |
 
 ### Saída esperada no Virtual Terminal
 
@@ -304,30 +331,17 @@ lib_deps =
 
 ### Compilação
 
-Adicionar o ambiente ESP32 ao `platformio.ini`:
+O ambiente `env:esp32` já está em `platformio.ini`. No rodapé do VSCode, alterne entre `env:uno` (simulação) e `env:esp32` (físico). **Nenhuma alteração manual no código é necessária** — o `config.h` detecta a plataforma automaticamente.
 
-```ini
-[env:esp32]
-platform = espressif32
-board = esp32dev
-framework = arduino
-lib_deps =
-    paulstoffregen/OneWire @ ^2.3.8
-    milesburton/DallasTemperature @ ^3.11.0
-    knolleary/PubSubClient @ ^2.8
-    bblanchon/ArduinoJson @ ^7.0.0
-    kosme/arduinoFFT @ ^2.0.1
-```
-
-No rodapé do VSCode, alterne entre `env:uno` (simulação) e `env:esp32` (físico). **Nenhuma alteração manual no código é necessária** — o `config.h` detecta a plataforma automaticamente.
-
-Antes de gravar no ESP32, ajustar as credenciais WiFi e o IP do broker em `publicador.cpp`:
+Antes de gravar no ESP32, ajustar as credenciais WiFi e o IP do broker em `src/publicador.cpp`:
 
 ```cpp
 constexpr const char* WIFI_SSID   = "SUA_REDE";
 constexpr const char* WIFI_PASS   = "SUA_SENHA";
 constexpr const char* MQTT_BROKER = "192.168.1.100";
 ```
+
+O firmware já chama `mqtt.setBufferSize(1024)` em `iniciar()` para acomodar o payload de espectro.
 
 ### Broker Mosquitto
 
@@ -340,6 +354,8 @@ sudo systemctl restart mosquitto
 # Verificar recebimento dos dados do ESP32
 mosquitto_sub -h localhost -t "transformador/#" -v
 ```
+
+No ESP32, a ponte Serial→MQTT **não é necessária** — o firmware fala MQTT direto com o broker. A stack `supervision/` ingere o broker do mesmo jeito que faz na simulação. Pipeline simplificado: ESP32 → Mosquitto → server → dashboard.
 
 ---
 
@@ -357,8 +373,8 @@ As limitações específicas do Proteus e seus workarounds estão documentadas e
 | P2 — Firmware Base | Módulos `mpu6050`, `ds18b20`, código não-bloqueante | Leituras estáveis no Virtual Terminal sem `delay()` |
 | P3 — DSP & Algoritmos | Módulos `sct013`, `analise_vibracao`, FFT 120Hz, detecção Inrush, gradiente ΔT | Espectro vibracional e flag de Inrush funcionando |
 | P4 — IoT & MQTT | Módulo `publicador`, broker Mosquitto, JSON com timestamp e alarmes | ESP32 publicando nos tópicos, testável com `mosquitto_sub` |
-| P5 — IHM Python | Dashboard, subscriber MQTT, alertas LED virtuais | Painel funcionando com dados reais do broker |
-| P6 — Diagnóstico & Docs | Lógica fuzzy/limites, datalogger CSV, relatório PDF | Diagnósticos na IHM, CSV gravando, PDF exportável |
+| P5 — Supervision (Frontend) | Dashboard React (`supervision/apps/web`), gráficos, espectro FFT, alertas | Painel atualizando ao vivo via WebSocket |
+| P6 — Supervision (Backend + Diagnóstico) | Server Express, MQTT subscriber, persistência SQLite+CSV, motor fuzzy Python, relatório PDF | Server consumindo o broker, fuzzy emitindo diagnósticos, PDF exportável |
 
 ---
 

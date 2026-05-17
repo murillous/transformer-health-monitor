@@ -23,11 +23,12 @@ O mesmo código fonte compila para os dois alvos. A seleção é automática via
 
 | Componente | Versão / Detalhe |
 |---|---|
-| Build system | PlatformIO (extensão VSCode) |
+| Build system firmware | PlatformIO (extensão VSCode) |
 | Linguagem firmware | C++ (Arduino framework) |
-| Linguagem IHM | Python 3.10+ |
-| Simulador | Proteus 8.x |
-| Broker MQTT | Mosquitto |
+| Supervisão | Monorepo npm em `supervision/` — TypeScript (Express + React) + Python (motor fuzzy) |
+| Ponte simulação | Python 3.10+ em `tools/serial_bridge/` |
+| Simulador | Proteus 8.x + COMPIM + com0com/socat |
+| Broker MQTT | Mosquitto local `:1883` |
 
 ### Setup completo
 
@@ -117,11 +118,20 @@ sensor.setResolution(12);  // padrão — outras resoluções quebram no Proteus
 i++;  // incrementa i
 ```
 
-### Python (IHM)
+### Python (motor fuzzy + ponte serial)
+
+Python aparece em dois lugares: `supervision/apps/intelligence/` (motor fuzzy chamado via subprocess) e `tools/serial_bridge/` (ponte Serial→MQTT do Proteus).
 
 - `snake_case` para tudo exceto classes (`PascalCase`)
 - Type hints obrigatórios em funções públicas
 - Docstrings no estilo Google em funções não-triviais
+
+### TypeScript (supervision)
+
+- ESM puro, imports sem extensão `.js`
+- Tipos compartilhados em `packages/shared` — nunca duplicar
+- Zod para validar mensagens entrando pelo `MQTTSubscriber` e pelas rotas REST
+- `tsconfig.base.json` força `strict` — nada de `any` implícito
 
 ---
 
@@ -259,7 +269,7 @@ Catálogo completo em `docs/05-pegadinhas-proteus.md`. Resumo:
 | MPU6050 trava eixo X em -1.00g no Proteus | Limitação do modelo da biblioteca ElectronicTree. Não impacta diagnóstico. |
 | DS18B20 retorna -127 intermitentemente | **Resolvido** ajustando propriedades do modelo no Proteus (ver `docs/05-pegadinhas-proteus.md`). Cache no `ds18b20.cpp` mantido como salvaguarda. |
 | `Logic contention` no log do Proteus | Comportamento normal do protocolo OneWire — **ignorar**. |
-| MQTT real não funciona no Proteus | Proteus não simula WiFi. Usar a ponte serial→MQTT em Python (`ihm/ponte_serial_mqtt.py`). |
+| MQTT real não funciona no Proteus | Proteus não simula WiFi. Pipeline: COMPIM (TXD↔TXD) + com0com (Win) ou socat (Linux) + `tools/serial_bridge/bridge.py`. |
 | VSINEs Primário/Secundário aparentam conectáveis ao TR1 | **Não conectar.** São simuladores independentes do sinal já condicionado do SCT-013. TR1 fica isolado como ilustração. |
 
 ---
@@ -310,7 +320,9 @@ Checklist antes de abrir PR:
 | `docs/04-padroes-codigo.md` | Convenções completas (lê antes do primeiro commit) |
 | `docs/05-pegadinhas-proteus.md` | Comportamentos não-óbvios do Proteus e workarounds |
 | `docs/ROADMAP.md` | Status do projeto e o que falta — fonte da verdade |
-| `docs/projeto_transformador.pdf` | Documento técnico formal para a avaliação |
+| `docs/Diagnostico_transformador.pdf` | Documento técnico formal para a avaliação |
+| `supervision/README.md` | Detalhes da stack de supervisão (server + web + intelligence) |
+| `tools/serial_bridge/bridge.py` | Ponte Serial Proteus → MQTT (lê COMPIM, publica no broker) |
 
 ---
 

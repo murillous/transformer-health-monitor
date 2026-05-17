@@ -1,60 +1,58 @@
 # 📡 Guia MQTT
 
-Como o sistema comunica os dados dos sensores via MQTT — tópicos, payloads, broker e estratégia de simulação.
+Como o sistema comunica os dados dos sensores via MQTT — tópicos, payloads, broker, ponte para o Proteus e ingestão pelo servidor de supervisão.
 
 ---
 
 ## O que é MQTT (em 1 minuto)
 
-MQTT é um protocolo leve de mensagens publish/subscribe, ideal para IoT. Funciona assim:
+Protocolo leve publish/subscribe ideal para IoT:
 
 ```
-Publisher (ESP32) ──► Broker (Mosquitto) ──► Subscriber (IHM Python)
+Firmware ──► Broker (Mosquitto) ──► Subscribers (server supervision, mosquitto_sub, MQTT Explorer…)
 ```
 
-- O **ESP32** publica mensagens em "tópicos" (strings hierárquicas)
-- O **broker** distribui as mensagens
-- A **IHM** se inscreve nos tópicos que interessa
+- O **firmware** publica em **tópicos** (strings hierárquicas).
+- O **broker** distribui as mensagens.
+- Os **subscribers** se inscrevem nos tópicos que interessam.
 
-Os três nem precisam estar online ao mesmo tempo — o broker faz buffer. Isso é diferente de HTTP, onde cliente e servidor precisam estar conectados simultaneamente.
+Diferente de HTTP, cliente e servidor não precisam estar online ao mesmo tempo — o broker faz buffer.
 
 ---
 
 ## Estrutura dos tópicos
 
-Tópicos seguem hierarquia separada por `/`, como um caminho de pasta. A organização adotada no projeto:
-
 ```
 transformador/
 ├── primario/
-│   ├── corrente          ← RMS da corrente no enrolamento de 220V
-│   └── inrush            ← flag de surto de energização + pico
+│   ├── corrente          ← RMS da corrente no enrolamento de 220V (Vrms)
+│   └── inrush            ← pico de surto de energização (Vpico no Proteus / A no físico)
 ├── secundario/
-│   ├── corrente          ← RMS da corrente no enrolamento de 12V
-│   └── tensao_saida      ← (futuro) regulação sob carga
+│   └── corrente          ← RMS da corrente no enrolamento de 12V (Vrms)
 ├── nucleo/
 │   ├── temperatura       ← °C absolutos
-│   └── delta_t           ← gradiente térmico
+│   └── delta_t           ← gradiente térmico °C
 ├── vibracao/
 │   ├── aceleracao        ← g no eixo Z (bruto)
-│   ├── fft_120hz         ← amplitude da frequência de magnetostrição
-│   └── fft_240hz         ← amplitude da 2ª harmônica
+│   ├── fft_120hz         ← amplitude no bin próximo a 120Hz
+│   ├── fft_240hz         ← amplitude no bin próximo a 240Hz
+│   └── espectro          ← array completo de bins do FFT (15 bins, 16-234Hz)
 └── status/
     ├── alarme            ← eventos críticos com severidade
-    └── heartbeat         ← timestamp de "estou vivo"
+    └── heartbeat         ← uptime (UNO) ou Unix time (ESP32)
 ```
 
 **Por que essa organização:**
 
-- **Subscribe seletivo:** a IHM pode escutar `transformador/#` (tudo) ou só `transformador/nucleo/+` (todas as temperaturas)
-- **Escalabilidade:** se um dia monitorarmos vários transformadores, basta adicionar um identificador: `transformador/T01/primario/corrente`
-- **Legibilidade:** o tópico sozinho já comunica o significado
+- **Subscribe seletivo:** `transformador/#` (tudo) ou `transformador/nucleo/+` (todas as temperaturas).
+- **Escalabilidade:** se um dia monitorarmos vários transformadores, basta um identificador: `transformador/T01/...`.
+- **Legibilidade:** o tópico sozinho já comunica o significado.
 
 ---
 
-## Formato do payload
+## Formatos de payload
 
-Todos os tópicos numéricos seguem o mesmo formato JSON:
+### Escalar (a maioria dos tópicos)
 
 ```json
 {
@@ -66,65 +64,66 @@ Todos os tópicos numéricos seguem o mesmo formato JSON:
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `ts` | inteiro | Timestamp Unix em segundos (uptime no Arduino, real no ESP32) |
+| `ts` | inteiro | Unix time (definido pelo ESP32 ou reescrito pela ponte serial no Proteus) |
 | `valor` | float | Valor medido, 4 casas decimais |
 | `unidade` | string | Unidade física (`C`, `Vrms`, `Vpico`, `g`, `A`, `s`) |
 
-Para o tópico `transformador/status/alarme`, o payload é mais rico:
+### Alarme (`transformador/status/alarme`)
 
 ```json
 {
   "ts": 1748000000,
   "tipo": "vibracao_120hz",
-  "severidade": "warning",
+  "severidade": "aviso",
   "valor": 0.42,
   "limite": 0.20,
   "mensagem": "Vibracao em 120Hz acima do limite"
 }
 ```
 
-Na simulação Proteus, `transformador/primario/inrush` publica o pico do sinal condicionado no ADC em `Vpico`. No hardware físico, após calibração do SCT-013, o mesmo tópico pode passar a representar corrente real em `A`.
+Severidade é sempre `"aviso"` ou `"critico"`. O server traduz para o campo interno `sev` ao persistir no SQLite (decisão histórica — banco já existia com schema `sev` antes do firmware publicar `severidade`).
+
+### Espectro (`transformador/vibracao/espectro`)
+
+```json
+{
+  "ts": 1748000000,
+  "espectro": [
+    { "freq": 16,  "amplitude": 0.0012 },
+    { "freq": 31,  "amplitude": 0.0024 },
+    { "freq": 47,  "amplitude": 0.0019 },
+    { "freq": 125, "amplitude": 0.1840 },
+    { "freq": 234, "amplitude": 0.0921 }
+  ]
+}
+```
+
+15 bins do FFT do `analise_vibracao` (32 amostras @ 500Hz, índices 1..15 — DC removido). O dashboard aplica suavização EMA (α=0.35) e marca linhas de referência em 120Hz e 240Hz.
 
 ---
 
-## A camada `publicador` — onde MQTT acontece no firmware
+## A camada `publicador` no firmware
 
 Toda publicação passa por uma função única:
 
 ```cpp
 publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
+publicador::publicarAlarme("vibracao_120hz", "aviso", 0.42, 0.20, "Vibracao acima do limite");
+publicador::publicarEspectro(TOPICO_ESPECTRO,
+                             analise_vibracao::magnitudes(),
+                             analise_vibracao::numAmostras(),
+                             analise_vibracao::frequenciaAmostragemHz());
 ```
 
-A função encapsula o JSON e seleciona automaticamente entre Serial (Proteus) e MQTT (ESP32) via `#if defined(ESP32)`.
+A função encapsula o JSON e seleciona automaticamente entre **Serial** (Proteus) e **MQTT** (ESP32) via `#if defined(ESP32)`.
 
-Alarmes usam a função `publicador::publicarAlarme()`, mantendo o mesmo padrão de transporte. No Proteus, também saem como linha `[MQTT] transformador/status/alarme -> {...}` para que a ponte Serial→MQTT consiga republicar sem tratamento especial.
-
-**Implementação simplificada (`publicador.cpp`):**
-
-```cpp
-void publicar(const char* topico, float valor, const char* unidade) {
-    char valorStr[16];
-    dtostrf(valor, 0, 4, valorStr);
-
-    char payload[96];
-    snprintf(payload, sizeof(payload),
-             "{\"ts\":%lu,\"valor\":%s,\"unidade\":\"%s\"}",
-             millis() / 1000, valorStr, unidade);
-
-#if defined(ESP32)
-    mqtt.publish(topico, payload);
-#else
-    Serial.print(F("[MQTT] "));
-    Serial.print(topico);
-    Serial.print(F(" -> "));
-    Serial.println(payload);
-#endif
-}
-```
+Detalhes de implementação do espectro:
+- **UNO:** stream direto pelo `Serial.print` — sem buffer grande na RAM (AVR só tem 2KB).
+- **ESP32:** monta `char payload[800]` único e chama `mqtt.publish()`. Em `iniciar()` chama `mqtt.setBufferSize(1024)` para garantir que o cliente PubSubClient aceite o pacote.
 
 ---
 
-## Configurando o broker Mosquitto
+## Broker Mosquitto
 
 ### Instalação
 
@@ -133,100 +132,124 @@ void publicar(const char* topico, float valor, const char* unidade) {
 sudo apt update
 sudo apt install mosquitto mosquitto-clients
 
-# macOS (Homebrew)
+# macOS
 brew install mosquitto
 
-# Windows: instalador em mosquitto.org/download
+# Windows
+# Instalador em https://mosquitto.org/download
 ```
 
 ### Permitir conexões da rede local
 
-Por padrão o Mosquitto só aceita conexões de `localhost`. Para o ESP32 conseguir conectar:
+Por padrão, o Mosquitto só aceita conexões de `localhost`. Para o ESP32 conectar:
 
+**Linux:**
 ```bash
-echo "listener 1883
-allow_anonymous true" | sudo tee /etc/mosquitto/conf.d/local.conf
-
+sudo tee /etc/mosquitto/conf.d/local.conf <<EOF
+listener 1883
+allow_anonymous true
+EOF
 sudo systemctl restart mosquitto
 ```
 
-### Verificar funcionamento
+**Windows:** editar `C:\Program Files\mosquitto\mosquitto.conf`:
+```
+listener 1883
+allow_anonymous true
+```
+E reiniciar o serviço (`Restart-Service mosquitto` no PowerShell admin).
+
+### Validação
 
 ```bash
-# Terminal 1 — fica escutando todos os tópicos do projeto
+# Terminal 1
 mosquitto_sub -h localhost -t "transformador/#" -v
 
-# Terminal 2 — publica uma mensagem de teste
-mosquitto_pub -h localhost -t "transformador/teste" \
-  -m '{"ts":1,"valor":42,"unidade":"X"}'
+# Terminal 2
+mosquitto_pub -h localhost -t "transformador/teste" -m '{"ts":1,"valor":42,"unidade":"X"}'
 ```
 
-O Terminal 1 deve mostrar imediatamente:
+Terminal 1 deve mostrar imediatamente:
 ```
 transformador/teste {"ts":1,"valor":42,"unidade":"X"}
 ```
 
 ---
 
-## Estratégia para a simulação Proteus (sem WiFi)
+## Ingestão pelo server `supervision`
 
-O Proteus não simula WiFi, então o Arduino UNO **não consegue falar MQTT diretamente**. A solução é uma **ponte serial → MQTT** em Python.
+`supervision/apps/server/src/mqtt/subscriber.ts` se conecta ao broker, subscreve em `TOPICOS_INSCREVER` (derivado automaticamente de `TOPICOS_MQTT` em `packages/shared/src/constants.ts`) e:
 
-### Como funciona
+- Para `transformador/status/alarme` — parseia o payload do firmware (com `severidade`) e persiste como `AlarmeMQTT` (com `sev`).
+- Para `transformador/vibracao/espectro` — passa o array `espectro` direto para o WebSocket sem validar como leitura escalar.
+- Para todos os demais tópicos — valida contra `leituraSchema` e persiste como `Registro` (SQLite + CSV).
 
-1. Arduino no Proteus imprime no Serial usando o formato `[MQTT] topico -> payload`
-2. O Proteus expõe a saída serial como uma porta COM virtual (via componente COMPIM ou exportação)
-3. Um script Python (`ihm/ponte_serial_mqtt.py`) lê essa porta, extrai os payloads e publica no broker Mosquitto real
-4. A IHM recebe os dados como se viessem do ESP32
+Cada mensagem dispara `wsHub.broadcast()` para o frontend.
 
-### Esqueleto do script
+Para desligar a ingestão MQTT e rodar só o UI com dados sintéticos (`/api/simular/iniciar`):
 
-```python
-import serial
-import paho.mqtt.client as mqtt
-import re
-
-PADRAO = re.compile(r'\[MQTT\] (\S+) -> (.+)')
-
-ser = serial.Serial("COM4", 9600)  # ajustar para sua porta
-mqtt_client = mqtt.Client()
-mqtt_client.connect("localhost", 1883)
-
-while True:
-    linha = ser.readline().decode(errors="ignore").strip()
-    match = PADRAO.match(linha)
-    if match:
-        topico, payload = match.groups()
-        mqtt_client.publish(topico, payload)
-        print(f"→ {topico}")
+```bash
+cd supervision
+npm run dev:server:offline   # equivale a MQTT_BROKER=none
 ```
-
-> **Importante:** a configuração da porta COM virtual no Proteus exige o componente **COMPIM** no esquemático e ajuste na propriedade `Physical port` para apontar para uma porta real (ex.: `COM4`). Em pares virtuais com `com0com` (Windows) ou `socat` (Linux), o Python lê a porta espelhada.
 
 ---
 
-## Testando o pipeline completo
+## Estratégia para a simulação Proteus (sem WiFi)
 
-Antes de integrar com a IHM, valide manualmente:
+O Proteus não simula WiFi, então o Arduino UNO **não fala MQTT diretamente**. A ponte resolve isso:
 
-```bash
-# Terminal 1 — escuta o broker
-mosquitto_sub -h localhost -t "transformador/#" -v
-```
-
-Rode a simulação no Proteus + a ponte Python. No Terminal 1 devem aparecer mensagens em tempo real:
+### Pipeline
 
 ```
-transformador/primario/corrente {"ts":4,"valor":0.6914,"unidade":"Vrms"}
-transformador/secundario/corrente {"ts":4,"valor":0.3461,"unidade":"Vrms"}
-transformador/nucleo/temperatura {"ts":4,"valor":26.5000,"unidade":"C"}
-transformador/nucleo/delta_t {"ts":4,"valor":1.5000,"unidade":"C"}
-transformador/vibracao/aceleracao {"ts":4,"valor":0.0000,"unidade":"g"}
-transformador/vibracao/fft_120hz {"ts":4,"valor":0.0000,"unidade":"g"}
-transformador/vibracao/fft_240hz {"ts":4,"valor":0.0000,"unidade":"g"}
+UNO Serial (TXD) ── COMPIM ── COM4 ── par com0com ── COM5 ── bridge.py ── Mosquitto
 ```
 
-Esse é o mesmo dado que o ESP32 vai publicar no hardware físico. Toda a IHM pode ser desenvolvida e testada já com esses dados.
+1. O firmware imprime no `Serial` em formato `[MQTT] topico -> {JSON}` (camada `publicador`).
+2. O componente **COMPIM** do Proteus expõe essa serial como uma porta COM real do Windows (`COM4`).
+3. **com0com** (Windows) ou **socat** (Linux) cria um par de COMs virtuais espelhadas (`COM4` ↔ `COM5`).
+4. O script `tools/serial_bridge/bridge.py` lê a outra ponta (`COM5`), extrai os payloads via regex, reescreve `ts` para timestamp Unix da máquina e publica no Mosquitto.
+5. O server `supervision` ingere o broker normalmente — não há nenhuma diferença vista do dashboard entre dados vindos do Proteus e dados vindos do ESP32 físico.
+
+### Detalhes do COMPIM
+
+- **TXD do Arduino → TXD do COMPIM**, não RXD. O COMPIM é uma ponte para o host, e seu TXD funciona como entrada do circuito simulado.
+- Propriedade `Physical port` aponta para uma ponta do par (ex.: `COM4`), baud `9600`.
+- Outro programa com `COM4` aberta = COMPIM falha silencioso. Fechar Arduino IDE, PuTTY, outras instâncias.
+
+### Detalhes do com0com
+
+- Versão signed do com0com necessária. No Windows 11, pode ser preciso **desativar Secure Boot** na UEFI para o driver instalar.
+- Criar o par com `install PortName=COM4 PortName=COM5` no Setup Command Prompt do com0com.
+
+### Esqueleto do bridge
+
+```python
+import re, json, time, serial
+import paho.mqtt.client as mqtt
+
+PADRAO = re.compile(r'\[MQTT\] (\S+) -> (.+)')
+
+ser = serial.Serial("COM5", 9600, timeout=1)
+cli = mqtt.Client()
+cli.connect("localhost", 1883)
+cli.loop_start()
+
+while True:
+    linha = ser.readline().decode(errors="ignore").strip()
+    m = PADRAO.match(linha)
+    if not m:
+        continue
+    topico, payload = m.group(1), m.group(2)
+    # Reescreve uptime do Arduino → Unix time
+    dados = json.loads(payload)
+    if "ts" in dados:
+        dados["ts"] = int(time.time())
+        payload = json.dumps(dados, separators=(",", ":"))
+    cli.publish(topico, payload)
+```
+
+Versão completa em [`tools/serial_bridge/bridge.py`](../tools/serial_bridge/bridge.py).
 
 ---
 
@@ -236,18 +259,31 @@ MQTT tem 3 níveis de garantia de entrega:
 
 | QoS | Significado | Quando usar |
 |---|---|---|
-| 0 | Fire-and-forget (sem confirmação) | Leituras periódicas — perder uma não é problema |
-| 1 | Pelo menos uma vez (pode duplicar) | Alarmes — não pode perder |
-| 2 | Exatamente uma vez (mais caro) | Quase nunca necessário |
+| 0 | Fire-and-forget | Leituras periódicas — perder uma não é problema |
+| 1 | Pelo menos uma vez | Alarmes — não pode perder |
+| 2 | Exatamente uma vez | Quase nunca necessário |
 
 Recomendação para o projeto:
 
 ```cpp
-mqtt.publish("transformador/primario/corrente", payload);        // QoS 0 implícito
-mqtt.publish("transformador/status/alarme", payload, true);      // retained=true
+mqtt.publish("transformador/primario/corrente", payload);              // QoS 0
+mqtt.publish("transformador/status/alarme", payload, true);            // retained = true
 ```
 
-O `retained=true` no tópico de alarme guarda o último valor no broker. Quando a IHM Python conectar, ela recebe imediatamente o último estado mesmo sem aguardar a próxima publicação.
+O `retained=true` no tópico de alarme guarda o último valor no broker. Quando o server conectar, recebe imediatamente o último estado.
+
+---
+
+## Debug rápido
+
+| Sintoma | Causa provável |
+|---|---|
+| `mosquitto_sub` vazio, bridge silenciosa | Proteus parado, COMPIM mal cabeado, ou TXD trocado com RXD |
+| `mosquitto_sub` vazio, bridge imprime `[skip]` | Firmware imprimindo formato diferente — checar `publicador.cpp:52-55` |
+| Bridge ok, server não loga "MQTT conectado" | `npm run dev` ainda com `MQTT_BROKER=none` ou broker em host errado |
+| Server loga conectado, dashboard parado | Frontend não rebuildou — `Ctrl+C` e `npm run dev` de novo |
+| `Payload inválido no tópico ...` no server | Bridge republicando texto cru ou Proteus emitindo lixo |
+| Espectro vazio no dashboard | Firmware antigo (sem `publicarEspectro`) ainda carregado — recompilar e gravar `.hex` novo |
 
 ---
 
@@ -255,5 +291,6 @@ O `retained=true` no tópico de alarme guarda o último valor no broker. Quando 
 
 - [HiveMQ MQTT Essentials](https://www.hivemq.com/mqtt-essentials/) — tutorial oficial bem feito
 - [Mosquitto docs](https://mosquitto.org/documentation/) — referência do broker
-- [paho-mqtt (Python)](https://www.eclipse.org/paho/index.php?page=clients/python/index.php) — biblioteca da IHM
+- [paho-mqtt (Python)](https://www.eclipse.org/paho/index.php?page=clients/python/index.php) — biblioteca da ponte
+- [mqtt (npm)](https://www.npmjs.com/package/mqtt) — biblioteca do server
 - [MQTT Explorer](http://mqtt-explorer.com/) — GUI para inspecionar o broker (super útil para debug)

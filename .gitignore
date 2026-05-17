@@ -19,3 +19,15 @@ Thumbs.db
 node_modules/
 .turbo/
 dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Credenciais / variáveis locais
+.env
+.env.local
+.env.*.local

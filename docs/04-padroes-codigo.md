@@ -175,7 +175,12 @@ Se aparecer um caso onde parece "necessário" usar `delay()` (geralmente por tim
 
 ---
 
-## Python / IHM
+## Python / Motor fuzzy + ponte serial
+
+A IHM principal é a stack TS em `supervision/`. Python aparece em dois lugares:
+
+- `supervision/apps/intelligence/` — motor fuzzy chamado via subprocess pelo server.
+- `tools/serial_bridge/` — ponte Serial→MQTT para a simulação Proteus.
 
 ### Nomenclatura
 
@@ -199,7 +204,7 @@ def calcular_rms(amostras: list[float], offset: float) -> float:
 def publicar_alarme(tipo: str, valor: float, limite: float) -> None:
     """
     Publica um alarme no broker MQTT com o nível de severidade adequado.
-    
+
     Args:
         tipo: Identificador do alarme (ex.: 'vibracao_120hz')
         valor: Valor medido que disparou o alarme
@@ -207,6 +212,19 @@ def publicar_alarme(tipo: str, valor: float, limite: float) -> None:
     """
     # ...
 ```
+
+---
+
+## TypeScript / Supervision
+
+A stack `supervision/` segue:
+
+- **ESM puro**, sem CommonJS — imports sem extensão `.js`.
+- **Tipos compartilhados** sempre em `packages/shared`. Nunca duplicar tipos entre `apps/server` e `apps/web`.
+- **Zod schemas** para validar mensagens entrando pelo `MQTTSubscriber` e pelas rotas REST.
+- **Hooks React** isolados em `apps/web/src/hooks/` — cada um com responsabilidade única (`useWebSocket`, `useDashboard`, `useTheme`).
+- **shadcn/ui** preferido sobre componentes manuais. Tailwind para estilos pontuais.
+- **Sem `any` implícito** — o `tsconfig.base.json` força `strict`. Quando precisar escapar, comente o porquê.
 
 ---
 

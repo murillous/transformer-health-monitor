@@ -53,13 +53,31 @@ pip install -r apps/intelligence/requirements.txt
 ## Como Rodar
 
 ```bash
-# Dev (servidor + web simultaneamente)
+# Pré-requisitos
+npm install
+pip install -r apps/intelligence/requirements.txt
+
+# Dev (servidor + web simultaneamente). Sobe o subscriber MQTT por padrão.
 npm run dev
 
 # Individualmente:
-npm run dev:server   # :3001 (auto-restart com tsx watch)
-npm run dev:web      # :5173 (Vite HMR)
+npm run dev:server          # :3001 (auto-restart com tsx watch)
+npm run dev:web             # :5173 (Vite HMR)
+
+# Sem broker (usa só o simulador interno via /api/simular/iniciar)
+npm run dev:server:offline  # equivale a MQTT_BROKER=none
 ```
+
+### Fluxo com firmware real
+
+Para receber dados reais (Proteus ou ESP32):
+
+1. Mosquitto rodando em `localhost:1883` (ver [`../docs/01-setup.md`](../docs/01-setup.md) e [`../docs/03-mqtt.md`](../docs/03-mqtt.md))
+2. No **Proteus**: COMPIM + com0com + `tools/serial_bridge/bridge.py` rodando
+3. No **ESP32**: credenciais WiFi configuradas em `src/publicador.cpp` e firmware gravado
+4. `npm run dev` — o server loga `MQTT conectado em mqtt://localhost:1883` e o dashboard começa a atualizar
+
+O simulador interno (`/api/simular/iniciar`) continua disponível para trabalhar no UI sem firmware. Os dois caminhos não conflitam — a última mensagem (real ou sintética) vence por tópico.
 
 ## Features
 
@@ -140,19 +158,28 @@ Gera dados sintéticos realistas via POST `/api/simular/iniciar`:
 
 ### WebSocket — Tópicos Broadcast
 
-| Tópico | Dados | Frequência |
-|--------|-------|------------|
-| `transformador/nucleo/temperatura` | `{topico, ts, valor, unidade}` | 1s |
-| `transformador/nucleo/delta_t` | mesmo padrão | 1s |
-| `transformador/primario/corrente` | mesmo padrão | 1s |
-| `transformador/secundario/corrente` | mesmo padrão | 1s |
-| `transformador/vibracao/fft_120hz` | mesmo padrão | 1s |
-| `transformador/vibracao/fft_240hz` | mesmo padrão | 1s |
-| `transformador/vibracao/espectro` | `{topico, ts, espectro: [{freq, amplitude}]}` | 1s |
-| `onda_corrente_primario` | `{topico, ts, amostras: number[]}` | 200ms |
-| `onda_corrente_secundario` | `{topico, ts, amostras: number[]}` | 200ms |
-| `diagnostico` | resultado completo do fuzzy | 1s |
-| `transformador/heartbeat` | `{topico, ts, valor: 1}` | 1s |
+| Tópico | Dados | Origem | Frequência típica |
+|--------|-------|--------|------------|
+| `transformador/nucleo/temperatura` | `{topico, ts, valor, unidade}` | firmware ou simulador | ~2s (firmware) / 1s (simulador) |
+| `transformador/nucleo/delta_t` | mesmo padrão | firmware ou simulador | mesmo |
+| `transformador/primario/corrente` | mesmo padrão | firmware ou simulador | mesmo |
+| `transformador/primario/inrush` | mesmo padrão | firmware (eventos) | sob evento |
+| `transformador/secundario/corrente` | mesmo padrão | firmware ou simulador | mesmo |
+| `transformador/vibracao/aceleracao` | mesmo padrão | firmware | mesmo |
+| `transformador/vibracao/fft_120hz` | mesmo padrão | firmware ou simulador | mesmo |
+| `transformador/vibracao/fft_240hz` | mesmo padrão | firmware ou simulador | mesmo |
+| `transformador/vibracao/espectro` | `{topico, ts, espectro: [{freq, amplitude}]}` (15 bins 16-234Hz no firmware atual) | firmware ou simulador | mesmo |
+| `onda_corrente_primario` | `{topico, ts, amostras: number[]}` | apenas simulador | 200ms |
+| `onda_corrente_secundario` | `{topico, ts, amostras: number[]}` | apenas simulador | 200ms |
+| `transformador/status/alarme` | `{topico, ts, tipo, severidade, valor, limite, mensagem}` | firmware | sob evento |
+| `transformador/status/heartbeat` | `{topico, ts, valor, unidade}` | firmware | ~2s |
+| `diagnostico` | resultado completo do fuzzy | server | 1s |
+
+> O firmware **não publica** `onda_corrente_*` (não tem como amostrar a 200ms ainda). Esses tópicos vêm apenas do simulador embutido e existem para validar o `WaveformChart`. Quando o dashboard estiver consumindo apenas dados reais, os gráficos de onda ficam vazios.
+
+### Mapping severidade → sev
+
+O firmware publica alarme com campo `severidade` (`"aviso"` ou `"critico"`). O banco SQLite usa o campo `sev` historicamente. O `MQTTSubscriber` traduz no recebimento — o resto do server e do frontend continua usando `sev` sem alterações.
 
 ### Formato de Saída do Diagnóstico
 

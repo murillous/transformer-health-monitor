@@ -94,9 +94,12 @@ publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
 ```
 
 No Arduino UNO, imprime no Serial em formato compatível com MQTT (linha começa com `[MQTT]`).  
-No ESP32, publica de fato no broker via PubSubClient.
+No ESP32, publica de fato no broker via PubSubClient (com `mqtt.setBufferSize(1024)` para acomodar o payload de espectro).
 
-Também expõe `publicarAlarme()`, que usa o mesmo transporte para o tópico `transformador/status/alarme` com payload estruturado (`tipo`, `severidade`, `valor`, `limite`, `mensagem`).
+Funções expostas:
+- `publicar(topico, valor, unidade)` — payload `{ts, valor, unidade}` para qualquer escalar.
+- `publicarAlarme(tipo, severidade, valor, limite, mensagem)` — payload estruturado em `transformador/status/alarme`.
+- `publicarEspectro(topico, magnitudes, n_amostras, fs_hz)` — array `{ts, espectro:[{freq, amplitude}…]}`. No UNO, faz stream direto pelo `Serial.print` para não alocar buffer grande na RAM; no ESP32, monta um `char[800]` único e publica.
 
 **Quem mexe:** P4 (IoT & MQTT).
 
@@ -136,17 +139,20 @@ float sct013::lerInstantaneoAbs(uint8_t pino);  // V_pico sem bias
 
 **Quem mexe:** P3 (DSP & Algoritmos).
 
-### `analise_vibracao` — FFT 120/240Hz
+### `analise_vibracao` — FFT do MPU6050
 
-Coleta amostras do eixo Z do MPU6050 de forma incremental, sem bloquear o `loop()`. Quando o buffer fecha, aplica remoção DC, janela Hamming, FFT e extrai amplitudes próximas de 120Hz e 240Hz.
+Coleta amostras do eixo Z do MPU6050 de forma incremental, sem bloquear o `loop()`. Quando o buffer fecha, aplica remoção DC, janela Hamming, FFT e extrai amplitudes próximas de 120Hz e 240Hz, além de expor o vetor de magnitudes completo para publicação como espectro.
 
 Interface pública:
 ```cpp
 void analise_vibracao::iniciar();
 analise_vibracao::Espectro analise_vibracao::atualizar();
+const float*               analise_vibracao::magnitudes();
+uint16_t                   analise_vibracao::numAmostras();
+float                      analise_vibracao::frequenciaAmostragemHz();
 ```
 
-No Arduino UNO, o buffer usa 32 amostras para caber na RAM. Isso preserva a demonstração no Proteus, mas a resolução espectral é limitada. No ESP32, pode ser aumentado depois se a validação física exigir maior precisão.
+No Arduino UNO, o buffer usa 32 amostras @ 500Hz → 16 bins úteis, Nyquist = 250Hz. Resolução espectral = 15,625Hz/bin. O `main.cpp` consome `magnitudes()` para chamar `publicador::publicarEspectro()` quando `Espectro::novo == true`. No ESP32, pode ser aumentado depois se a validação física exigir maior precisão.
 
 **Quem mexe:** P3 (DSP & Algoritmos).
 
@@ -173,6 +179,7 @@ Não contém lógica de sensor. Apenas:
 3. Chama as funções de leitura e atualiza análises incrementais
 4. Chama `diagnostico` para sinais derivados e alarmes
 5. Chama `publicar()` com os resultados
+6. Publica heartbeat (`TOPICO_HEARTBEAT`) a cada ciclo para o dashboard saber que o firmware está vivo
 
 Se você precisa mexer no `main.cpp` para adicionar lógica de sensor, **provavelmente está no lugar errado** — provavelmente devia estar no módulo do sensor.
 

@@ -8,7 +8,7 @@ Contexto para Claude Code trabalhar neste projeto. Leia antes de gerar ou modifi
 
 Sistema embarcado de **monitoramento e diagnóstico preditivo de transformadores elétricos**. Projeto acadêmico do curso de Engenharia da Computação da UEMA (2026).
 
-Coleta 4 grandezas (corrente primária/secundária, temperatura do núcleo, vibração mecânica), processa localmente (FFT, RMS, detecção de inrush) e publica via MQTT para uma IHM Python.
+Coleta 4 grandezas (corrente primária/secundária, temperatura do núcleo, vibração mecânica), processa localmente (FFT, RMS, detecção de inrush) e publica via MQTT para a stack de supervisão (`supervision/`) — Express + React + motor fuzzy Python.
 
 **Duas plataformas-alvo:**
 - **Arduino UNO** rodando em simulação Proteus (entrega 18/05/2026)
@@ -20,10 +20,15 @@ O firmware compila para ambos sem alterações manuais — a detecção é autom
 
 ## Stack
 
-- **Linguagem firmware:** C++ (Arduino framework)
-- **Build:** PlatformIO
-- **Linguagem IHM:** Python (Streamlit ou NiceGUI — a decidir)
-- **Broker:** Mosquitto
+- **Firmware:** C++ (Arduino framework), PlatformIO
+- **Supervisão (`supervision/`):** monorepo npm workspaces
+  - `apps/server` — Node + TypeScript + Express + WebSocket + `mqtt` client
+  - `apps/web` — React 19 + Vite + Recharts + shadcn/ui + Tailwind
+  - `apps/intelligence` — Python 3 + NumPy (motor fuzzy Mamdani, executado via subprocess pelo server)
+  - `packages/shared` — tipos e constantes (`TOPICOS_MQTT`, `LIMITES`)
+- **Persistência:** SQLite (WAL) + CSV (`supervision/apps/server/data/`)
+- **Ponte simulação:** `tools/serial_bridge/bridge.py` (pyserial + paho-mqtt) — usada só no Proteus, ESP32 fala MQTT direto
+- **Broker:** Mosquitto local `:1883`
 - **Bibliotecas firmware:** OneWire, DallasTemperature, PubSubClient (ESP32), arduinoFFT
 
 ---
@@ -34,14 +39,19 @@ O firmware compila para ambos sem alterações manuais — a detecção é autom
 src/                  ← firmware modular
   main.cpp            ← orquestração — setup() + loop()
   config.h            ← pinos, calibração, tópicos — detecta plataforma
-  publicador.h/cpp    ← camada de transporte (Serial OU MQTT)
+  publicador.h/cpp    ← camada de transporte (Serial OU MQTT) + publicarEspectro
   mpu6050.h/cpp       ← acelerômetro/giroscópio (I²C)
   ds18b20.h/cpp       ← temperatura (OneWire) com cache de tolerância
   sct013.h/cpp        ← corrente RMS (ADC)
-  analise_vibracao.h/cpp ← FFT 120/240Hz do MPU6050
+  analise_vibracao.h/cpp ← buffer + FFT (expõe magnitudes para publicação)
   diagnostico.h/cpp   ← ΔT, inrush e alarmes
 proteus/              ← .pdsprj e .hex da simulação
-ihm/                  ← dashboard Python (em desenvolvimento)
+supervision/          ← stack TS + Python fuzzy (substitui o antigo ihm/ Python)
+  apps/server/        ← Express :3001 + MQTT subscriber + WebSocket
+  apps/web/           ← Dashboard React :5173
+  apps/intelligence/  ← motor fuzzy chamado via subprocess
+  packages/shared/    ← tipos + constantes
+tools/serial_bridge/  ← ponte Serial Proteus → MQTT (Python)
 docs/                 ← documentação Markdown + LaTeX
 platformio.ini
 README.md
@@ -201,8 +211,19 @@ As VSINEs do esquemático Proteus são simuladores **independentes** do sinal j�
 
 Não tente fazer o Arduino UNO falar MQTT — não vai funcionar. A estratégia é:
 - Arduino imprime no Serial em formato `[MQTT] tópico -> JSON`
-- Script Python `ihm/ponte_serial_mqtt.py` lê o Serial e republica no broker real
-- Esse fluxo está documentado em `docs/03-mqtt.md`
+- Esquemático Proteus expõe a Serial via componente **COMPIM** (TXD do UNO → TXD do COMPIM, baud 9600)
+- com0com (Windows) ou socat (Linux) cria um par de COMs virtuais
+- `tools/serial_bridge/bridge.py` lê a outra ponta do par e republica no broker Mosquitto local
+- O server `supervision/apps/server` ingere o broker via `MQTTSubscriber` e propaga via WebSocket
+- Detalhes em `docs/03-mqtt.md` e `docs/01-setup.md`
+
+### COMPIM no Proteus liga TXD do Arduino ao **TXD do COMPIM**
+
+Contraintuitivo: COMPIM é "ponte" para porta física do Windows. O pino RXD dele *envia para o host*. TXD recebe do circuito simulado. Trocar = serial silenciosa.
+
+### com0com no Windows 11 exige Secure Boot desativado
+
+O driver do com0com não é assinado pela Microsoft. Em máquinas com Secure Boot ativo, a instalação falha silenciosa ou as portas COM virtuais não aparecem no Device Manager. Desativar Secure Boot na UEFI antes de instalar.
 
 ### Não use `String` (classe do Arduino) em loops
 
@@ -246,7 +267,8 @@ Imperativo, descrição curta, sem ponto final. Corpo opcional explicando o porq
 | Convenções de código completas | `docs/04-padroes-codigo.md` |
 | Pegadinhas do Proteus | `docs/05-pegadinhas-proteus.md` |
 | Status atual e o que falta | `docs/ROADMAP.md` |
-| Contexto técnico profundo | `docs/projeto_transformador.pdf` |
+| Contexto técnico profundo | `docs/Diagnostico_transformador.pdf` |
+| Detalhes da stack de supervisão | `supervision/README.md` |
 
 ---
 

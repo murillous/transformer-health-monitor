@@ -97,7 +97,7 @@ Após esse ajuste, o sensor responde rápido e corretamente, **eliminando a nece
 - **No Arduino UNO:** imprime no Serial em formato `[MQTT] tópico -> {JSON}`
 - **No ESP32:** publica de fato no broker via PubSubClient
 
-Um script Python (`ihm/ponte_serial_mqtt.py`) lê o Serial do Proteus via porta COM virtual e republica no broker real. Detalhes em [`03-mqtt.md`](./03-mqtt.md).
+O script `tools/serial_bridge/bridge.py` lê o Serial do Proteus via porta COM virtual (com0com no Windows, socat no Linux) e republica no broker real. Detalhes em [`03-mqtt.md`](./03-mqtt.md) e [`01-setup.md`](./01-setup.md).
 
 ---
 
@@ -119,7 +119,7 @@ Um script Python (`ihm/ponte_serial_mqtt.py`) lê o Serial do Proteus via porta 
 
 **Causa:** o Arduino UNO não tem RTC. O `millis()` retorna milissegundos desde o boot. Dividimos por 1000 para ter segundos desde o boot.
 
-**Solução adotada:** a IHM Python (ou a ponte serial→MQTT) substitui o `ts` pelo timestamp Unix real ao receber o payload. O firmware do ESP32, quando finalizado, vai sincronizar via NTP e publicar timestamps Unix corretos diretamente.
+**Solução adotada:** a ponte `tools/serial_bridge/bridge.py` reescreve o `ts` para o timestamp Unix da máquina antes de publicar no broker. O firmware do ESP32, quando finalizado, vai sincronizar via NTP e publicar timestamps Unix corretos diretamente.
 
 ---
 
@@ -146,19 +146,43 @@ Um script Python (`ihm/ponte_serial_mqtt.py`) lê o Serial do Proteus via porta 
 
 - Para apresentação: tirar screenshot mesmo em fonte pequena (o conteúdo é o que importa)
 - Para uso prolongado: usar componente **COMPIM** para mapear a serial do Arduino para uma porta COM real do Windows, e abrir um terminal externo (PuTTY, Termite, ou Serial Monitor do Arduino IDE)
-- Para demos profissionais: combinar COMPIM + a ponte Serial→MQTT + IHM Python
+- Para demos profissionais: combinar COMPIM + a ponte Serial→MQTT + dashboard `supervision/`
 
 ---
 
 ## 11. FFT e Inrush no Proteus são validações funcionais, não metrológicas
 
-**Sintoma:** os tópicos `transformador/vibracao/fft_120hz`, `transformador/vibracao/fft_240hz` e `transformador/primario/inrush` aparecem no Virtual Terminal, mas os valores não correspondem a uma medição física calibrada em g/A.
+**Sintoma:** os tópicos `transformador/vibracao/fft_120hz`, `transformador/vibracao/fft_240hz`, `transformador/vibracao/espectro` e `transformador/primario/inrush` aparecem no Virtual Terminal, mas os valores não correspondem a uma medição física calibrada em g/A.
 
 **Causa:** o MPU6050 do Proteus é um modelo simplificado e o SCT-013 não existe no simulador. O firmware analisa o sinal disponível, mas o sinal de corrente é uma VSINE condicionada e o sinal de vibração depende do modelo ElectronicTree.
 
 **Solução:** usar a simulação para validar fluxo de dados, tópicos MQTT, máquina de estados e integração com a IHM. Para calibração final de limiares, usar o hardware ESP32 com SCT-013 real e MPU6050 fixado no chassi.
 
 **No hardware físico:** após calibrar o SCT-013, `inrush` deve representar corrente real em A. No Proteus, o tópico usa `Vpico` porque mede o pico do sinal condicionado no ADC.
+
+---
+
+## 12. COMPIM liga TXD do Arduino ao **TXD do COMPIM**
+
+**Sintoma:** ponte serial→MQTT abre `COM5` sem erro, mas `readline()` sempre retorna vazio. Virtual Terminal do Proteus mostra os payloads normalmente — então o firmware está OK.
+
+**Causa:** os pinos do COMPIM são "ponte para o host", não terminais convencionais. O **TXD do COMPIM** funciona como entrada vinda do circuito simulado — é ele que recebe os bytes para repassar pro `Physical port` do Windows. Conectar TXD do Arduino ao RXD do COMPIM faz tudo cair no vazio.
+
+**Solução:** ligar **TXD do Arduino (D1/PD1) → TXD do COMPIM**. RXD do COMPIM pode ficar solto, porque o firmware não lê comandos pela serial.
+
+**Como descobrimos:** os layouts do COMPIM no datasheet do Proteus desenham os pinos da perspectiva do host (a porta COM física), não do circuito simulado.
+
+---
+
+## 13. com0com no Windows 11 não instala com Secure Boot ativo
+
+**Sintoma:** instala o com0com, reinicia, abre o Device Manager — não há nenhuma porta `COM4`/`COM5` na seção `com0com - serial port emulators`. Nenhum erro óbvio durante a instalação.
+
+**Causa:** o driver da com0com é assinado por entidade não-Microsoft. O Secure Boot do Windows 11 rejeita drivers de kernel sem assinatura da MS por padrão.
+
+**Solução:** entrar na UEFI (geralmente reiniciar segurando `F2`/`Del` conforme placa), desativar `Secure Boot`, salvar, reiniciar. Reinstalar a com0com — as portas aparecem.
+
+**Considere reativar Secure Boot depois?** Pode reativar — uma vez instalado, o driver continua funcional. Mas se um Windows Update reinstalar o driver, o problema volta. Manter desativado durante o desenvolvimento é mais simples.
 
 ---
 
