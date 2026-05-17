@@ -318,13 +318,23 @@ O ESP32 dispensa COMPIM e ponte serial. Ele fala MQTT diretamente.
 
 Antes de gravar:
 
-1. Editar `src/publicador.cpp`, linhas com as credenciais:
+1. Definir as credenciais via **variáveis de ambiente** (não edite o código — `platformio.ini` lê elas como build flags):
 
-```cpp
-constexpr const char* WIFI_SSID   = "SUA_REDE";
-constexpr const char* WIFI_PASS   = "SUA_SENHA";
-constexpr const char* MQTT_BROKER = "192.168.1.100";   // IP da máquina do broker
+```powershell
+# Windows PowerShell
+$env:WIFI_SSID = "RedeReal"
+$env:WIFI_PASS = "SenhaSegura"
+$env:MQTT_BROKER = "192.168.1.100"   # IP da máquina do broker
 ```
+
+```bash
+# Linux/macOS
+export WIFI_SSID=RedeReal
+export WIFI_PASS=SenhaSegura
+export MQTT_BROKER=192.168.1.100
+```
+
+Se as vars não estiverem setadas o firmware compila com placeholders (`SUA_REDE` etc.) e nunca conecta — útil só pra validar build.
 
 2. Compilar e gravar:
 

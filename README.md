@@ -287,7 +287,27 @@ Como o Proteus não tem stack TCP/IP, o script `tools/serial_bridge/bridge.py` f
 - **Node.js 20+** e **Python 3.10+** para a stack `supervision/` e a ponte
 - Bibliotecas firmware já listadas em [`platformio.ini`](./platformio.ini)
 
-### Passo a passo
+### Atalho — script único de boot
+
+Um comando verifica deps, instala o que falta, checa o broker, sobe a bridge serial e o stack supervision:
+
+```powershell
+# Windows — default COM5 (par com0com documentado)
+.\scripts\start.ps1
+.\scripts\start.ps1 -ComPort COM6       # COM diferente
+.\scripts\start.ps1 -NoBridge           # sem bridge (simulador interno ou ESP32)
+```
+
+```bash
+# Linux/macOS — COM_PORT vazio por padrão (varia por distro)
+COM_PORT=/dev/ttyUSB0 ./scripts/start.sh
+./scripts/start.sh --com-port=/tmp/ttyV1
+./scripts/start.sh --no-bridge
+```
+
+Ctrl+C derruba bridge + server + web. Mosquitto **não** sobe pelo script — só avisa se a porta `1883` não responder.
+
+### Passo a passo manual (referência)
 
 1. **Compilar firmware:** abrir o projeto no VSCode → `pio run -e uno` → `.hex` sai em `.pio/build/uno/firmware.hex`.
 2. **Carregar no Proteus:** abrir `proteus/MicroProject_3.0.pdsprj` → clique duplo no Arduino UNO → campo **Program File** → apontar para o `.hex`.

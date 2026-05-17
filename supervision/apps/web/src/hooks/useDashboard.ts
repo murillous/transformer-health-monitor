@@ -20,6 +20,8 @@ const MAPA_TOPICO_GRANDEZA: Record<string, string> = {
   [TOPICOS_MQTT.correntePrimario]: "correntePrimario",
   [TOPICOS_MQTT.correnteSecundario]: "correnteSecundario",
   [TOPICOS_MQTT.vibracao240hz]: "vibracao240hz",
+  [TOPICOS_MQTT.vibracaoAceleracao]: "vibracaoAceleracao",
+  [TOPICOS_MQTT.inrushPrimario]: "inrushPrimario",
 };
 
 const LABELS: Record<string, string> = {
@@ -29,6 +31,8 @@ const LABELS: Record<string, string> = {
   correntePrimario: "Corrente Primário",
   correnteSecundario: "Corrente Secundário",
   vibracao240hz: "Vibração 240Hz",
+  vibracaoAceleracao: "Aceleração Z",
+  inrushPrimario: "Pico Inrush",
 };
 
 interface PontoGrafico {

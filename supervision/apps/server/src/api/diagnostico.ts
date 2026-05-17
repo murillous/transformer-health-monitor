@@ -46,6 +46,50 @@ const histVib240: { ts: number; valor: number }[] = [];
 let vidaConsumida = 0;
 let ultimoTsVida = 0;
 
+// Throttle do alarme de eficiência — evita flood
+let ultimoAlarmeEficienciaMs = 0;
+const THROTTLE_EFICIENCIA_MS = 60_000;
+
+interface DiagnosticoCustom {
+  tipo: string;
+  severidade: string;
+  titulo: string;
+  mensagem: string;
+  recomendacao: string;
+  grandeza: string;
+  valor_atual: number | null;
+}
+
+// Detecta ΔT subindo sem aumento proporcional de carga (perdas no núcleo,
+// conexões, refrigeração comprometida). Retorna diagnóstico custom ou null.
+function detectarEficienciaAnomala(
+  deltaTAtual: number,
+  tendencias: ReturnType<typeof calcTendencias>
+): DiagnosticoCustom | null {
+  const tDeltaT = tendencias.find((t) => t.grandeza === "delta_t");
+  const tCorrS = tendencias.find((t) => t.grandeza === "corrente_secundario");
+  if (!tDeltaT || !tCorrS) return null;
+
+  // Inclinações já em unidade/hora (multiplicação por 3600 em linearRegression)
+  const subindoDeltaT = tDeltaT.inclinacao > 1.0;
+  const cargaEstavel = Math.abs(tCorrS.inclinacao) < 1.0;
+  const deltaTRelevante = deltaTAtual > LIMIARES.delta_t.aviso;
+
+  if (!(subindoDeltaT && cargaEstavel && deltaTRelevante)) return null;
+
+  return {
+    tipo: "eficiencia_anomala",
+    severidade: "aviso",
+    titulo: "Anomalia de Eficiência",
+    mensagem:
+      "ΔT subindo sem aumento proporcional de carga — possível perda no núcleo, conexões frouxas ou refrigeração comprometida.",
+    recomendacao:
+      "Inspecionar conexões/aperto das chapas do núcleo, verificar fluxo de óleo/ar de refrigeração e analisar perdas a vazio.",
+    grandeza: "delta_t",
+    valor_atual: deltaTAtual,
+  };
+}
+
 const TEMP_REF = 80;
 
 function agingRate(tempC: number): number {
@@ -275,6 +319,33 @@ export function executarDiagnostico(): Promise<unknown> {
         resultado.vida_residual = vidaResidual;
         resultado.tendencias = tendencias;
         resultado.predicoes = predicoes;
+
+        // Detector ΔT × carga — adiciona diagnóstico custom + alarme throttled
+        const deltaTAtual = leituras.delta_t ?? 0;
+        const eficienciaDiag = detectarEficienciaAnomala(deltaTAtual, tendencias);
+        if (eficienciaDiag) {
+          if (!Array.isArray(resultado.diagnosticos)) resultado.diagnosticos = [];
+          resultado.diagnosticos.push(eficienciaDiag);
+
+          if (!Array.isArray(resultado.grandezas_criticas)) resultado.grandezas_criticas = [];
+          if (!resultado.grandezas_criticas.includes("delta_t")) {
+            resultado.grandezas_criticas.push("delta_t");
+          }
+          if (resultado.severidade_geral === "ok") resultado.severidade_geral = "aviso";
+
+          const agoraMs = Date.now();
+          if (agoraMs - ultimoAlarmeEficienciaMs > THROTTLE_EFICIENCIA_MS) {
+            ultimoAlarmeEficienciaMs = agoraMs;
+            store.pushAlarme({
+              ts: Math.floor(agoraMs / 1000),
+              tipo: "eficiencia",
+              sev: "aviso",
+              valor: deltaTAtual,
+              limite: LIMIARES.delta_t.aviso,
+            });
+          }
+        }
+
         resolve(resultado);
       } catch {
         reject(new Error(`Resposta inválida do diagnóstico: ${stdout}`));

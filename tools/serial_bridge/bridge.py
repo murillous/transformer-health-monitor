@@ -33,7 +33,11 @@ PADRAO = re.compile(r"\[MQTT\]\s+(\S+)\s+->\s+(.+)")
 
 
 def conectar_mqtt(broker: str, porta: int) -> mqtt.Client:
-    cliente = mqtt.Client(client_id="proteus-bridge")
+    # paho-mqtt 2.x exige CallbackAPIVersion. Fallback p/ 1.x se atributo ausente.
+    try:
+        cliente = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="proteus-bridge")
+    except AttributeError:
+        cliente = mqtt.Client(client_id="proteus-bridge")
     cliente.connect(broker, porta, keepalive=30)
     cliente.loop_start()
     return cliente

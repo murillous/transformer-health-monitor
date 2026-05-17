@@ -54,6 +54,7 @@ export default function Dashboard() {
     { titulo: "ΔT", topico: TOPICOS_MQTT.deltaT },
     { titulo: "Corrente P", topico: TOPICOS_MQTT.correntePrimario },
     { titulo: "Corrente S", topico: TOPICOS_MQTT.correnteSecundario },
+    { titulo: "Aceleração Z", topico: TOPICOS_MQTT.vibracaoAceleracao },
     { titulo: "Pico Inrush", topico: TOPICOS_MQTT.inrushPrimario },
   ];
 
@@ -82,8 +83,8 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="p-6">
-        <TabsContent value="painel" className="space-y-6">
+      <main className="p-3 md:p-6">
+        <TabsContent value="painel" className="space-y-4 md:space-y-6">
           <div className="flex items-center gap-2">
             <Button
               variant={acquiring ? "destructive" : "default"}
@@ -105,7 +106,7 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-3">
             {metricas.map((m) => (
               <MetricCard
                 key={m.topico}
@@ -118,7 +119,7 @@ export default function Dashboard() {
             <AlertasResumo ultimosValores={ultimosValores} onNavigate={() => setTabAtual("alertas")} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Chart
               titulo="Temperatura (°C)"
               series={[
@@ -174,7 +175,7 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <WaveformChart titulo="Forma de Onda — Corrente Primário" amostras={ondaPrimario} cor="#3b82f6" />
             <WaveformChart titulo="Forma de Onda — Corrente Secundário" amostras={ondaSecundario} cor="#10b981" />
           </div>

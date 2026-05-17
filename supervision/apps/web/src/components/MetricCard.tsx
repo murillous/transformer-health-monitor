@@ -27,16 +27,16 @@ export default function MetricCard({ titulo, topico, leitura }: Props) {
 
   return (
     <Card className={`ring-0 shadow-sm border-0 border-l-4 ${borda[sev]}`}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">{titulo}</span>
+      <CardContent className="p-3 md:p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs md:text-sm text-muted-foreground truncate">{titulo}</span>
           <LedIndicator severity={sev} />
         </div>
-        <div className="mt-2">
-          <span className={`text-2xl font-bold ${corTexto[sev]}`}>
+        <div className="mt-1.5 md:mt-2">
+          <span className={`text-xl md:text-2xl font-bold ${corTexto[sev]}`}>
             {leitura ? leitura.valor.toFixed(1) : "---"}
           </span>
-          <span className="ml-1 text-sm text-muted-foreground">
+          <span className="ml-1 text-xs md:text-sm text-muted-foreground">
             {leitura?.unidade ?? ""}
           </span>
         </div>

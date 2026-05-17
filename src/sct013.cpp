@@ -6,11 +6,17 @@ namespace sct013 {
 float lerRMS(uint8_t pino)
 {
     float somatorio = 0.0f;
+    unsigned long alvo_us = micros();
 
     for (int i = 0; i < N_AMOSTRAS_RMS; i++) {
         const float tensao = (analogRead(pino) * VREF / ADC_RES) - BIAS;
         somatorio += tensao * tensao;
-        delayMicroseconds(200);
+        // Busy-wait determinístico até o próximo slot de 200µs.
+        // Substitui delayMicroseconds() pra alinhar com convenção zero-delay.
+        alvo_us += 200UL;
+        while ((long)(micros() - alvo_us) < 0) {
+            // spin curto
+        }
     }
 
     return sqrt(somatorio / N_AMOSTRAS_RMS);

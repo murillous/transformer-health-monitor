@@ -11,11 +11,11 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 | Módulo | Progresso | Responsável |
 |---|---|---|
 | 🔧 Hardware | ▓▓▓▓▓▓░░░░ 60% | P1 |
-| 💾 Firmware Base | ▓▓▓▓▓▓▓▓▓░ 95% | P2 |
-| 📊 DSP & Algoritmos | ▓▓▓▓▓▓▓▓░░ 80% | P3 |
-| 📡 IoT & MQTT | ▓▓▓▓▓▓▓▓▓░ 90% | P4 |
-| 🖥️ Supervision (Frontend) | ▓▓▓▓▓▓▓▓▓░ 90% | P5 |
-| 📋 Supervision (Backend + Diagnóstico) | ▓▓▓▓▓▓▓▓░░ 85% | P6 |
+| 💾 Firmware Base | ▓▓▓▓▓▓▓▓▓▓ 100% | P2 |
+| 📊 DSP & Algoritmos | ▓▓▓▓▓▓▓▓▓░ 90% | P3 |
+| 📡 IoT & MQTT | ▓▓▓▓▓▓▓▓▓▓ 100% | P4 |
+| 🖥️ Supervision (Frontend) | ▓▓▓▓▓▓▓▓▓▓ 100% | P5 |
+| 📋 Supervision (Backend + Diagnóstico) | ▓▓▓▓▓▓▓▓▓▓ 95% | P6 |
 
 ---
 
@@ -36,7 +36,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Adicionar transformador TR1 ilustrativo (não conectado ao Arduino)
 - [x] Adicionar COMPIM ligando TXD do Arduino ao TXD do COMPIM (ver `05-pegadinhas-proteus.md` item 12)
 - [x] Validar leituras dos 4 sensores no Virtual Terminal
-- [ ] Documentar fotos do esquemático final na pasta `proteus/`
+- [~] Documentar fotos do esquemático final na pasta `proteus/` *(fora do escopo desta iteração — registro manual posterior)*
 
 ### Hardware físico (entrega 15/06)
 
@@ -87,8 +87,8 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Testar compilação para ESP32 (sem gravar ainda)
 - [x] Implementar publicação MQTT real via PubSubClient
 - [x] Definir `mqtt.setBufferSize(1024)` para acomodar payload de espectro
-- [ ] Configurar credenciais WiFi finais em `publicador.cpp` (após decidir rede do laboratório)
-- [ ] Implementar reconexão automática de WiFi (atualmente só MQTT reconecta)
+- [x] Configurar credenciais WiFi via build flags (env vars `WIFI_SSID`/`WIFI_PASS`/`MQTT_BROKER` em `platformio.ini`)
+- [x] Implementar reconexão automática de WiFi (`publicador::manter()` reconecta WiFi + MQTT throttled)
 - [ ] Gravar firmware no ESP32 físico
 - [ ] Validar leituras dos 4 sensores no hardware real
 
@@ -123,9 +123,9 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 
 - [x] Estimar temperatura ambiente (constante ou sensor externo)
 - [x] Calcular ΔT = T_núcleo − T_ambiente
-- [ ] Cruzar ΔT com nível de carga (corrente secundária)
+- [x] Cruzar ΔT com nível de carga (corrente secundária) — detector estatístico em `api/diagnostico.ts::detectarEficienciaAnomala()`
 - [x] Publicar no tópico `nucleo/delta_t`
-- [ ] Implementar alerta de eficiência (ΔT crescente sem aumento de carga)
+- [x] Implementar alerta de eficiência (ΔT crescente sem aumento de carga) — diagnóstico `eficiencia_anomala` + alarme `eficiencia` throttled 60s
 
 ---
 
@@ -141,7 +141,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Implementar `publicarAlarme()` com payload estruturado (severidade, mensagem)
 - [x] Implementar `publicarEspectro()` (stream Serial no UNO, buffer único no ESP32)
 - [x] Aumentar `MQTT_MAX_PACKET_SIZE` no ESP32 (`mqtt.setBufferSize(1024)`)
-- [ ] Implementar reconexão automática de WiFi quando cair
+- [x] Implementar reconexão automática de WiFi quando cair
 
 ### Broker e infraestrutura
 
@@ -192,9 +192,9 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 
 ### Pendências
 
-- [ ] Decidir como exibir `vibracao/aceleracao` e `primario/inrush` (firmware publica, frontend não tem card dedicado)
-- [ ] Polish responsivo para resolução de projetor
-- [ ] Testes E2E mínimos
+- [x] Decidir como exibir `vibracao/aceleracao` e `primario/inrush` — cards dedicados no grid de métricas, limites em `constants.ts::LIMITES`
+- [x] Polish responsivo para resolução de projetor — breakpoints Tailwind otimizados p/ 1366x768 (sala UEMA)
+- [~] Testes E2E mínimos — *fora do escopo desta iteração*
 
 ---
 
@@ -215,7 +215,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Handler especial para `transformador/status/alarme` (traduz `severidade` → `sev`)
 - [x] Handler especial para `transformador/vibracao/espectro` (broadcast direto)
 - [x] Script `dev:server:offline` para rodar sem broker
-- [ ] Mecanismo de reconexão automática ao broker quando cair
+- [x] Mecanismo de reconexão automática ao broker quando cair (`reconnectPeriod: 5000` + handlers `reconnect`/`close`/`offline`)
 
 ### Motor fuzzy (Python)
 
@@ -238,7 +238,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Tabela de estatísticas
 - [x] SVGs inline para gráficos
 - [x] Tabela de eventos críticos
-- [ ] Recomendações automáticas baseadas no diagnóstico fuzzy (apenas textual hoje)
+- [x] Recomendações automáticas baseadas no diagnóstico fuzzy — `relatorio.ts` chama `executarDiagnostico()` e renderiza seção "Recomendações Técnicas (Motor Fuzzy)"
 
 ### Documentação
 

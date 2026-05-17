@@ -24,6 +24,13 @@ BRIDGE_DIR="$REPO_ROOT/tools/serial_bridge"
 COM_PORT="${COM_PORT:-${SERIAL_PORT:-}}"
 MQTT_BROKER="${MQTT_BROKER:-localhost}"
 MQTT_PORT="${MQTT_PORT:-1883}"
+NO_BRIDGE=0
+for arg in "$@"; do
+    case "$arg" in
+        --no-bridge) NO_BRIDGE=1 ;;
+        --com-port=*) COM_PORT="${arg#--com-port=}" ;;
+    esac
+done
 
 # Cores
 C_CYAN='\033[1;36m'; C_GREEN='\033[1;32m'; C_YELLOW='\033[1;33m'; C_RED='\033[1;31m'; C_OFF='\033[0m'
@@ -93,54 +100,39 @@ else
 fi
 
 # ─── Spawn processos filhos ───────────────────────────────────────────────
-PIDS=()
-NAMES=()
+# Bridge fica em background; npm run dev roda em FOREGROUND pra logs do
+# server+web aparecerem direto no console e Ctrl+C ser tratado nativamente.
+
+BRIDGE_PID=""
 
 cleanup() {
-    echo ""
-    step "Derrubando processos filhos"
-    for i in "${!PIDS[@]}"; do
-        pid="${PIDS[$i]}"
-        name="${NAMES[$i]}"
-        if kill -0 "$pid" 2>/dev/null; then
-            # Mata o tree inteiro (npm spawna server+web via concurrently)
-            pkill -P "$pid" 2>/dev/null || true
-            kill "$pid" 2>/dev/null || true
-            ok "$name (PID $pid) derrubado"
-        fi
-    done
+    if [[ -n "$BRIDGE_PID" ]] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+        echo ""
+        step "Derrubando bridge serial"
+        pkill -P "$BRIDGE_PID" 2>/dev/null || true
+        kill "$BRIDGE_PID" 2>/dev/null || true
+        ok "bridge (PID $BRIDGE_PID) derrubado"
+    fi
 }
 trap cleanup INT TERM EXIT
 
-# Bridge serial (opcional)
-if [[ -n "$COM_PORT" ]]; then
+if [[ $NO_BRIDGE -eq 1 ]]; then
+    warn "--no-bridge passado, pulando bridge serial (use simulador via /api/simular/iniciar ou ESP32 direto)"
+elif [[ -n "$COM_PORT" ]]; then
     step "Subindo bridge serial em $COM_PORT -> $MQTT_BROKER"
     ( cd "$BRIDGE_DIR" && "$PYTHON_BIN" bridge.py --port "$COM_PORT" --broker "$MQTT_BROKER" ) &
-    pid=$!
-    PIDS+=("$pid"); NAMES+=("bridge")
-    ok "bridge PID $pid"
+    BRIDGE_PID=$!
+    ok "bridge PID $BRIDGE_PID em $COM_PORT"
 else
-    warn "COM_PORT nao setado — pulando bridge serial (use simulador via /api/simular/iniciar ou ESP32 direto)"
+    warn "COM_PORT nao setado, pulando bridge serial (setar via COM_PORT=/dev/ttyUSB0 ou --com-port=...)"
 fi
 
-# Server + Web (npm run dev usa concurrently)
 step "Subindo server (:3001) + dashboard (:5173)"
-( cd "$SUPERVISION_DIR" && npm run dev ) &
-pid=$!
-PIDS+=("$pid"); NAMES+=("supervision")
-ok "supervision PID $pid"
-
 echo ""
-echo -e "${C_GREEN}Stack rodando. Abra http://localhost:5173 — Ctrl+C derruba tudo.${C_OFF}"
+echo -e "${C_GREEN}Stack rodando. Abra http://localhost:5173 - Ctrl+C derruba tudo.${C_OFF}"
 echo ""
 
-# ─── Loop principal: monitora processos ────────────────────────────────────
-while true; do
-    for i in "${!PIDS[@]}"; do
-        if ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
-            err "${NAMES[$i]} (PID ${PIDS[$i]}) saiu"
-            exit 1
-        fi
-    done
-    sleep 1
-done
+# Foreground: output do concurrently (server + web) sai direto pro console.
+# Ctrl+C interrompe o npm e dispara o trap pra matar a bridge.
+cd "$SUPERVISION_DIR"
+npm run dev

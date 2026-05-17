@@ -74,11 +74,11 @@ void publicarAlarmes(float temperatura_nucleo, float delta_t,
 {
     if (!isnan(temperatura_nucleo)) {
         if (temperatura_nucleo >= LIMIAR_TEMP_CRITICO_C) {
-            publicarAlarmeLimite("temperatura", "critical",
+            publicarAlarmeLimite("temperatura", "critico",
                                  temperatura_nucleo, LIMIAR_TEMP_CRITICO_C,
                                  "Temperatura do nucleo em nivel critico");
         } else if (temperatura_nucleo >= LIMIAR_TEMP_AVISO_C) {
-            publicarAlarmeLimite("temperatura", "warning",
+            publicarAlarmeLimite("temperatura", "aviso",
                                  temperatura_nucleo, LIMIAR_TEMP_AVISO_C,
                                  "Temperatura do nucleo acima do normal");
         }
@@ -86,11 +86,11 @@ void publicarAlarmes(float temperatura_nucleo, float delta_t,
 
     if (!isnan(delta_t)) {
         if (delta_t >= LIMIAR_DELTA_T_CRITICO_C) {
-            publicarAlarmeLimite("delta_t", "critical",
+            publicarAlarmeLimite("delta_t", "critico",
                                  delta_t, LIMIAR_DELTA_T_CRITICO_C,
                                  "Gradiente termico critico para a carga atual");
         } else if (delta_t >= LIMIAR_DELTA_T_AVISO_C) {
-            publicarAlarmeLimite("delta_t", "warning",
+            publicarAlarmeLimite("delta_t", "aviso",
                                  delta_t, LIMIAR_DELTA_T_AVISO_C,
                                  "Gradiente termico elevado");
         }
@@ -98,18 +98,18 @@ void publicarAlarmes(float temperatura_nucleo, float delta_t,
 
     if (!isnan(fft_120hz)) {
         if (fft_120hz >= LIMIAR_FFT_120HZ_CRITICO_G) {
-            publicarAlarmeLimite("vibracao_120hz", "critical",
+            publicarAlarmeLimite("vibracao_120hz", "critico",
                                  fft_120hz, LIMIAR_FFT_120HZ_CRITICO_G,
                                  "Vibracao em 120Hz em nivel critico");
         } else if (fft_120hz >= LIMIAR_FFT_120HZ_AVISO_G) {
-            publicarAlarmeLimite("vibracao_120hz", "warning",
+            publicarAlarmeLimite("vibracao_120hz", "aviso",
                                  fft_120hz, LIMIAR_FFT_120HZ_AVISO_G,
                                  "Vibracao em 120Hz acima do limite");
         }
     }
 
     if (inrush.detectado) {
-        publicarAlarmeLimite("inrush", "warning",
+        publicarAlarmeLimite("inrush", "aviso",
                              inrush.pico, LIMIAR_INRUSH_VPICO,
                              "Pico de inrush detectado no primario");
     }

@@ -28,6 +28,11 @@ static constexpr uint16_t N_HARMONICAS =
 // v_real depois que atualizar() sobrescreveu os bins com novas amostras.
 static float ampsHarmonicas[N_HARMONICAS] = {NAN, NAN, NAN, NAN, NAN};
 
+// Buffer de forma de onda global static (128 bytes). Mover pra fora do
+// loop() reduz pressao no stack do AVR — no caminho de inrush + alarme o
+// stack chega perto do limite (RAM 2KB total).
+static float ondaBuf[N_AMOSTRAS_ONDA];
+
 // ═══════════════════════════════════════════════════════════════════════════
 void setup()
 {
@@ -91,14 +96,11 @@ void loop()
     }
 
     // Forma de onda dos dois lados — captura burst + publica array.
-    // Buffer único reutilizado (~128 bytes na stack) pra economizar RAM AVR.
-    {
-        float ondaBuf[N_AMOSTRAS_ONDA];
-        sct013::capturarOnda(PINO_SCT_P, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
-        publicador::publicarOnda(TOPICO_ONDA_P, ondaBuf, N_AMOSTRAS_ONDA);
-        sct013::capturarOnda(PINO_SCT_S, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
-        publicador::publicarOnda(TOPICO_ONDA_S, ondaBuf, N_AMOSTRAS_ONDA);
-    }
+    // ondaBuf e global static (declarado no topo) pra nao ocupar stack.
+    sct013::capturarOnda(PINO_SCT_P, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
+    publicador::publicarOnda(TOPICO_ONDA_P, ondaBuf, N_AMOSTRAS_ONDA);
+    sct013::capturarOnda(PINO_SCT_S, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
+    publicador::publicarOnda(TOPICO_ONDA_S, ondaBuf, N_AMOSTRAS_ONDA);
 
     diagnostico::publicarAlarmes(temp, deltaT, ampsHarmonicas[0], {false, 0.0f});
 
