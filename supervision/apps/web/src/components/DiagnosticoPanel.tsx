@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench } from "lucide-react";
+import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp } from "lucide-react";
+import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
 type Props = {
   diagnostico: DiagnosticoResultado | null;
+  historicoRisco?: { ts: number; score: number }[];
 };
 
 function RiskBar({ score, nivel }: { score: number; nivel: string }) {
@@ -23,6 +25,31 @@ function RiskBar({ score, nivel }: { score: number; nivel: string }) {
   );
 }
 
+function Sparkline({ historico }: { historico: { ts: number; score: number }[] }) {
+  if (historico.length < 2) {
+    return (
+      <div className="flex items-center justify-center h-full text-[10px] text-muted-foreground">
+        Aguardando dados...
+      </div>
+    );
+  }
+
+  const data = historico.map((p) => ({ t: new Date(p.ts * 1000).toLocaleTimeString("pt-BR"), s: p.score }));
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data}>
+        <Tooltip
+          contentStyle={{ fontSize: 10, padding: "2px 6px" }}
+          labelFormatter={(label) => label}
+          formatter={(value) => [Number(value).toFixed(1), "Risco"]}
+        />
+        <Line type="monotone" dataKey="s" stroke="#8884d8" strokeWidth={1.5} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 function SeverityLED({ sev }: { sev: string }) {
   const cor =
     sev === "critico" ? "bg-red-500 shadow-red-500/50" :
@@ -31,14 +58,34 @@ function SeverityLED({ sev }: { sev: string }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full animate-pulse ${cor}`} />;
 }
 
-export default function DiagnosticoPanel({ diagnostico }: Props) {
+const GRANDEZAS: Record<string, string> = {
+  temperatura: "Temperatura",
+  delta_t: "ΔT",
+  vibracao_120hz: "Vibração 120Hz",
+  vibracao_240hz: "Vibração 240Hz",
+  corrente_primario: "Corrente Primário",
+  corrente_secundario: "Corrente Secundário",
+};
+
+function fmtGrandeza(g: string): string {
+  return GRANDEZAS[g] ?? g;
+}
+
+export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: Props) {
   if (!diagnostico) return null;
 
-  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral } = diagnostico;
+  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp } = diagnostico;
   const sevGeralLED =
     severidade_geral === "critico" ? "bg-red-500 shadow-red-500/50" :
     severidade_geral === "aviso" ? "bg-yellow-500 shadow-yellow-500/50" :
     "bg-green-500 shadow-green-500/50";
+
+  const criticos = diagnosticos.filter((d) => d.severidade === "critico");
+  const avisos = diagnosticos.filter((d) => d.severidade === "aviso");
+
+  const ultimaAtualizacao = timestamp
+    ? new Date(timestamp * 1000).toLocaleTimeString("pt-BR")
+    : null;
 
   return (
     <Card className="ring-0 shadow-sm border-0">
@@ -52,51 +99,62 @@ export default function DiagnosticoPanel({ diagnostico }: Props) {
               {diagnosticos.length} {diagnosticos.length === 1 ? "intervenção" : "intervenções"}
             </Badge>
           )}
+          {ultimaAtualizacao && (
+            <span className="ml-auto text-[10px] text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3" /> {ultimaAtualizacao}
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Risco Operacional</span>
-            <RiskBar score={risco_operacional.score} nivel={risco_operacional.nivel} />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2 space-y-3">
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">Risco Operacional</span>
+              <RiskBar score={risco_operacional.score} nivel={risco_operacional.nivel} />
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">Urgência de Intervenção</span>
+              <RiskBar score={urgencia_intervencao.score} nivel={urgencia_intervencao.nivel} />
+            </div>
           </div>
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Urgência de Intervenção</span>
-            <RiskBar score={urgencia_intervencao.score} nivel={urgencia_intervencao.nivel} />
+          <div className="col-span-1">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+              <TrendingUp className="h-3 w-3" /> Evolução do Risco
+            </div>
+            <div className="h-16">
+              <Sparkline historico={historicoRisco} />
+            </div>
           </div>
         </div>
 
         {diagnosticos.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <Lightbulb className="h-3 w-3" /> Sugestões de Intervenção
             </span>
-            {diagnosticos.map((d, i) => (
-              <div key={i} className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
-                {d.severidade === "critico" ? (
-                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <SeverityLED sev={d.severidade} />
-                    <Badge
-                      variant={d.severidade === "critico" ? "destructive" : "secondary"}
-                      className="text-[10px] px-1.5 py-0"
-                    >
-                      {d.severidade === "critico" ? "CRÍTICO" : "AVISO"}
-                    </Badge>
-                    <span className="text-xs font-medium truncate">{d.titulo}</span>
-                  </div>
-                  <p className="text-xs text-foreground/90">{d.mensagem}</p>
-                  <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
-                    <Wrench className="h-3 w-3" />
-                    <span>{d.recomendacao}</span>
-                  </div>
-                </div>
+
+            {criticos.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-semibold text-red-500 uppercase tracking-wide">
+                  Críticos ({criticos.length})
+                </span>
+                {criticos.map((d, i) => (
+                  <IntervencaoCard key={`crit-${i}`} diag={d} />
+                ))}
               </div>
-            ))}
+            )}
+
+            {avisos.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-semibold text-yellow-500 uppercase tracking-wide">
+                  Avisos ({avisos.length})
+                </span>
+                {avisos.map((d, i) => (
+                  <IntervencaoCard key={`aviso-${i}`} diag={d} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -108,5 +166,41 @@ export default function DiagnosticoPanel({ diagnostico }: Props) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function IntervencaoCard({ diag }: { diag: DiagnosticoResultado["diagnosticos"][number] }) {
+  return (
+    <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+      {diag.severidade === "critico" ? (
+        <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+      ) : (
+        <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <SeverityLED sev={diag.severidade} />
+          <Badge
+            variant={diag.severidade === "critico" ? "destructive" : "secondary"}
+            className="text-[10px] px-1.5 py-0"
+          >
+            {diag.severidade === "critico" ? "CRÍTICO" : "AVISO"}
+          </Badge>
+          <span className="text-xs font-medium truncate">{diag.titulo}</span>
+        </div>
+        <p className="text-xs text-foreground/90">{diag.mensagem}</p>
+        <div className="flex items-center gap-3 mt-1">
+          {diag.grandeza !== "multivariavel" && diag.valor_atual != null && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <span className="font-medium">{fmtGrandeza(diag.grandeza)}:</span> {diag.valor_atual}
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Wrench className="h-3 w-3" />
+            <span>{diag.recomendacao}</span>
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

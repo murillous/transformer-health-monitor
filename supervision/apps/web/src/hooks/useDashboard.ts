@@ -80,6 +80,7 @@ export function useDashboard() {
   const [historicoAlertas, setHistoricoAlertas] = useState<AlertaHistorico[]>([]);
   const [espectro, setEspectro] = useState<{ freq: number; amplitude: number }[]>([]);
   const [diagnostico, setDiagnostico] = useState<DiagnosticoResultado | null>(null);
+  const [historicoRisco, setHistoricoRisco] = useState<{ ts: number; score: number }[]>([]);
   const espectroRef = useRef<{ freq: number; amplitude: number }[]>([]);
   const carregado = useRef(false);
 
@@ -146,7 +147,13 @@ export function useDashboard() {
     if (!acquiring) return;
 
     if (data.topico === "diagnostico" && data.diagnostico) {
-      setDiagnostico(data.diagnostico as DiagnosticoResultado);
+      const diag = data.diagnostico as DiagnosticoResultado;
+      setDiagnostico(diag);
+      setHistoricoRisco((prev) => {
+        const novo = [...prev, { ts: diag.timestamp ?? Date.now() / 1000, score: diag.risco_operacional.score }];
+        if (novo.length > 60) novo.splice(0, novo.length - 60);
+        return novo;
+      });
       return;
     }
 
@@ -235,5 +242,5 @@ export function useDashboard() {
     setHistoricoAlertas([]);
   }, []);
 
-  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico };
+  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico, historicoRisco };
 }

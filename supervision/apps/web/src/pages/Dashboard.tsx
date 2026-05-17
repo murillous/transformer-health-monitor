@@ -16,7 +16,7 @@ import { TOPICOS_MQTT } from "@transformer-monitor/shared";
 
 export default function Dashboard() {
   const [tabAtual, setTabAtual] = useState("painel");
-  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico } = useDashboard();
+  const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, diagnostico, historicoRisco } = useDashboard();
   useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
@@ -180,7 +180,7 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="diagnostico" className="space-y-6">
-          <DiagnosticoPanel diagnostico={diagnostico} />
+          <DiagnosticoPanel diagnostico={diagnostico} historicoRisco={historicoRisco} />
         </TabsContent>
 
         <TabsContent value="alertas">
