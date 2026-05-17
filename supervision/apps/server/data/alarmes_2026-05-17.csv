@@ -1081,3 +1081,17 @@ timestamp,tipo,severidade,valor,limite
 1778985373,transformador/nucleo/delta_t,aviso,23.76,15
 1778985374,transformador/secundario/corrente,aviso,37.43,30
 1778985374,transformador/vibracao/fft_120hz,aviso,0.41,0.2
+1778985390,transformador/vibracao/fft_120hz,aviso,0.41,0.2
+1778985415,transformador/nucleo/temperatura,aviso,77.11,70
+1778985419,transformador/secundario/corrente,aviso,36.46,30
+1778985420,transformador/vibracao/fft_240hz,aviso,0.22,0.1
+1778985424,transformador/primario/corrente,critico,7,6
+1778985425,transformador/vibracao/fft_120hz,critico,0.51,0.45
+1778985430,transformador/vibracao/fft_120hz,aviso,0.41,0.2
+1778985432,transformador/vibracao/fft_240hz,aviso,0.22,0.1
+1778985434,transformador/secundario/corrente,critico,50.27,45
+1778985437,transformador/nucleo/delta_t,critico,26.98,25
+1778985443,transformador/vibracao/fft_120hz,aviso,0.44,0.2
+1778985448,transformador/nucleo/temperatura,aviso,74.33,70
+1778985452,transformador/vibracao/fft_120hz,critico,0.49,0.45
+1778985460,transformador/nucleo/temperatura,aviso,71.75,70

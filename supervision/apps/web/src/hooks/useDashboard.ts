@@ -65,6 +65,7 @@ export interface DiagnosticoResultado {
   tendencias: {
     grandeza: string;
     label: string;
+    unidade: string;
     inclinacao: number;
     direcao: string;
   }[];

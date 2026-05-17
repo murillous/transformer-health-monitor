@@ -189,7 +189,7 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
                   <div className="text-xs">
                     <span className="font-medium">{t.label}</span>
                     <span className="ml-2 text-muted-foreground">
-                      {t.direcao === "estavel" ? "estável" : `${Math.abs(t.inclinacao).toFixed(2)}°/h ${t.direcao === "subindo" ? "↑" : "↓"}`}
+                      {t.direcao === "estavel" ? "estável" : `${Math.abs(t.inclinacao).toFixed(2)} ${t.unidade} ${t.direcao === "subindo" ? "↑" : "↓"}`}
                     </span>
                   </div>
                 </div>

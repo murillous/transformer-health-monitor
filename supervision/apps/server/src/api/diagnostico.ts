@@ -36,8 +36,10 @@ const LIMIARES: Record<string, { critico: number; aviso: number }> = {
 const HIST_MAX = 30;
 const histTemp: { ts: number; valor: number }[] = [];
 const histDeltaT: { ts: number; valor: number }[] = [];
-const histCorrente: { ts: number; valor: number }[] = [];
+const histCorrenteP: { ts: number; valor: number }[] = [];
+const histCorrenteS: { ts: number; valor: number }[] = [];
 const histVib120: { ts: number; valor: number }[] = [];
+const histVib240: { ts: number; valor: number }[] = [];
 
 // Arrhenius accumulator (in-memory)
 let vidaConsumida = 0;
@@ -78,9 +80,9 @@ function linearRegression(pontos: { ts: number; valor: number }[]): { inclinacao
 }
 
 function calcCorrelacaoCV(): number {
-  if (histCorrente.length < 5 || histVib120.length < 5) return 0;
+  if (histCorrenteP.length < 5 || histVib120.length < 5) return 0;
   const cutoff = Date.now() - 20000;
-  const recC = histCorrente.filter((p) => p.ts > cutoff).map((p) => p.valor);
+  const recC = histCorrenteP.filter((p) => p.ts > cutoff).map((p) => p.valor);
   const recV = histVib120.filter((p) => p.ts > cutoff).map((p) => p.valor);
   if (recC.length < 3 || recV.length < 3) return 0;
   const medC = recC.reduce((a, b) => a + b, 0) / recC.length;
@@ -97,19 +99,24 @@ function calcCorrelacaoCV(): number {
 function calcTendencias(): Array<{
   grandeza: string;
   label: string;
+  unidade: string;
   inclinacao: number;
   direcao: string;
 }> {
-  const metricas: Array<{ hist: { ts: number; valor: number }[]; grandeza: string; label: string }> = [
-    { hist: histTemp, grandeza: "temperatura", label: "Temperatura" },
-    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT" },
+  const metricas: Array<{ hist: { ts: number; valor: number }[]; grandeza: string; label: string; unidade: string }> = [
+    { hist: histTemp, grandeza: "temperatura", label: "Temperatura", unidade: "°C/h" },
+    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT", unidade: "°C/h" },
+    { hist: histCorrenteP, grandeza: "corrente_primario", label: "Corrente P", unidade: "A/h" },
+    { hist: histCorrenteS, grandeza: "corrente_secundario", label: "Corrente S", unidade: "A/h" },
+    { hist: histVib120, grandeza: "vibracao_120hz", label: "Vibração 120Hz", unidade: "g/h" },
+    { hist: histVib240, grandeza: "vibracao_240hz", label: "Vibração 240Hz", unidade: "g/h" },
   ];
 
   return metricas.map((m) => {
     const trend = linearRegression(m.hist);
     const inclinacao = Math.round(trend.inclinacao * 100) / 100;
     const direcao = Math.abs(inclinacao) < 0.1 ? "estavel" : inclinacao > 0 ? "subindo" : "descendo";
-    return { grandeza: m.grandeza, label: m.label, inclinacao, direcao };
+    return { grandeza: m.grandeza, label: m.label, unidade: m.unidade, inclinacao, direcao };
   });
 }
 
@@ -182,8 +189,10 @@ function getUltimasLeituras(): Record<string, number> {
     const ts = new Date(r.timestamp).getTime();
     if (r.topico === "transformador/nucleo/temperatura") pushWindow(histTemp, ts, r.valor);
     if (r.topico === "transformador/nucleo/delta_t") pushWindow(histDeltaT, ts, r.valor);
-    if (r.topico === "transformador/primario/corrente") pushWindow(histCorrente, ts, r.valor);
+    if (r.topico === "transformador/primario/corrente") pushWindow(histCorrenteP, ts, r.valor);
+    if (r.topico === "transformador/secundario/corrente") pushWindow(histCorrenteS, ts, r.valor);
     if (r.topico === "transformador/vibracao/fft_120hz") pushWindow(histVib120, ts, r.valor);
+    if (r.topico === "transformador/vibracao/fft_240hz") pushWindow(histVib240, ts, r.valor);
   }
 
   return leituras;
