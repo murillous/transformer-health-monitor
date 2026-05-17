@@ -62,6 +62,8 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Criar módulo `ds18b20` (header + implementação)
 - [x] Criar módulo `sct013` (header + implementação)
 - [x] Criar módulo `publicador` (camada de transporte)
+- [x] Criar módulo `analise_vibracao` (buffer MPU6050 + FFT)
+- [x] Criar módulo `diagnostico` (ΔT, inrush e alarmes)
 - [x] Refatorar `main.cpp` para usar os módulos
 
 ### Aquisição de sensores

@@ -23,7 +23,9 @@ src/
 ├── publicador.h/cpp  # Camada de transporte (Serial / MQTT)
 ├── mpu6050.h/cpp     # Acelerômetro/giroscópio via I²C
 ├── ds18b20.h/cpp     # Temperatura via OneWire
-└── sct013.h/cpp      # Corrente RMS via ADC
+├── sct013.h/cpp      # Corrente RMS via ADC
+├── analise_vibracao.h/cpp  # Buffer MPU6050 + FFT 120/240Hz
+└── diagnostico.h/cpp # ΔT, inrush e alarmes
 ```
 
 Cada par `.h`/`.cpp` representa um **módulo independente**. O `main.cpp` apenas amarra os módulos no fluxo principal.
@@ -44,10 +46,14 @@ Cada par `.h`/`.cpp` representa um **módulo independente**. O `main.cpp` apenas
 │  loop()  ──┬─► publicador::manter()        ← MQTT keepalive │
 │            │                                                │
 │            │   (a cada INTERVALO_MS)                        │
+│            ├─► analise_vibracao::atualizar() ─► publicador  │
+│            ├─► sct013::lerInstantaneoAbs(A0) ─► diagnostico │
+│            │                                                │
+│            │   (a cada INTERVALO_MS)                        │
 │            ├─► mpu6050::ler()       ──┐                     │
-│            ├─► ds18b20::lerTemperatura() ├──► publicador::  │
-│            ├─► sct013::lerRMS(A0)   ──┤      publicar()     │
-│            └─► sct013::lerRMS(A1)   ──┘                     │
+│            ├─► ds18b20::lerTemperatura() ├──► diagnostico   │
+│            ├─► sct013::lerRMS(A0)   ──┤      publicador::   │
+│            └─► sct013::lerRMS(A1)   ──┘      publicar()     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -90,6 +96,8 @@ publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
 No Arduino UNO, imprime no Serial em formato compatível com MQTT (linha começa com `[MQTT]`).  
 No ESP32, publica de fato no broker via PubSubClient.
 
+Também expõe `publicarAlarme()`, que usa o mesmo transporte para o tópico `transformador/status/alarme` com payload estruturado (`tipo`, `severidade`, `valor`, `limite`, `mensagem`).
+
 **Quem mexe:** P4 (IoT & MQTT).
 
 ### `mpu6050` — Acelerômetro/giroscópio
@@ -123,17 +131,48 @@ Amostragem ADC + cálculo RMS pela definição matemática (raiz da média dos q
 Interface pública:
 ```cpp
 float sct013::lerRMS(uint8_t pino);  // V_rms no pino A0 ou A1
+float sct013::lerInstantaneoAbs(uint8_t pino);  // V_pico sem bias
 ```
 
 **Quem mexe:** P3 (DSP & Algoritmos).
+
+### `analise_vibracao` — FFT 120/240Hz
+
+Coleta amostras do eixo Z do MPU6050 de forma incremental, sem bloquear o `loop()`. Quando o buffer fecha, aplica remoção DC, janela Hamming, FFT e extrai amplitudes próximas de 120Hz e 240Hz.
+
+Interface pública:
+```cpp
+void analise_vibracao::iniciar();
+analise_vibracao::Espectro analise_vibracao::atualizar();
+```
+
+No Arduino UNO, o buffer usa 32 amostras para caber na RAM. Isso preserva a demonstração no Proteus, mas a resolução espectral é limitada. No ESP32, pode ser aumentado depois se a validação física exigir maior precisão.
+
+**Quem mexe:** P3 (DSP & Algoritmos).
+
+### `diagnostico` — ΔT, Inrush e Alarmes
+
+Centraliza regras que combinam leituras de mais de um módulo. Calcula ΔT contra temperatura ambiente configurada, detecta inrush por máquina de estados (`idle → monitorando → cooldown`) e publica alarmes estruturados via `publicador`.
+
+Interface pública:
+```cpp
+float diagnostico::calcularDeltaT(float temperatura_nucleo);
+diagnostico::Inrush diagnostico::atualizarInrush(float corrente_primario_vpico);
+void diagnostico::publicarAlarmes(float temperatura_nucleo, float delta_t,
+                                  float fft_120hz,
+                                  const diagnostico::Inrush& inrush);
+```
+
+**Quem mexe:** P3 (algoritmos) e P6 (limites/mensagens de diagnóstico).
 
 ### `main.cpp` — Orquestração
 
 Não contém lógica de sensor. Apenas:
 1. Chama `iniciar()` de cada módulo no `setup()`
 2. Controla o intervalo do loop com `millis()`
-3. Chama as funções de leitura
-4. Chama `publicar()` com os resultados
+3. Chama as funções de leitura e atualiza análises incrementais
+4. Chama `diagnostico` para sinais derivados e alarmes
+5. Chama `publicar()` com os resultados
 
 Se você precisa mexer no `main.cpp` para adicionar lógica de sensor, **provavelmente está no lugar errado** — provavelmente devia estar no módulo do sensor.
 

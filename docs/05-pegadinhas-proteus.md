@@ -150,6 +150,18 @@ Um script Python (`ihm/ponte_serial_mqtt.py`) lê o Serial do Proteus via porta 
 
 ---
 
+## 11. FFT e Inrush no Proteus são validações funcionais, não metrológicas
+
+**Sintoma:** os tópicos `transformador/vibracao/fft_120hz`, `transformador/vibracao/fft_240hz` e `transformador/primario/inrush` aparecem no Virtual Terminal, mas os valores não correspondem a uma medição física calibrada em g/A.
+
+**Causa:** o MPU6050 do Proteus é um modelo simplificado e o SCT-013 não existe no simulador. O firmware analisa o sinal disponível, mas o sinal de corrente é uma VSINE condicionada e o sinal de vibração depende do modelo ElectronicTree.
+
+**Solução:** usar a simulação para validar fluxo de dados, tópicos MQTT, máquina de estados e integração com a IHM. Para calibração final de limiares, usar o hardware ESP32 com SCT-013 real e MPU6050 fixado no chassi.
+
+**No hardware físico:** após calibrar o SCT-013, `inrush` deve representar corrente real em A. No Proteus, o tópico usa `Vpico` porque mede o pico do sinal condicionado no ADC.
+
+---
+
 ## Como adicionar uma pegadinha nova
 
 Se você descobrir um comportamento estranho do Proteus, **documente aqui**. Estrutura sugerida:

@@ -38,6 +38,8 @@ src/                  ← firmware modular
   mpu6050.h/cpp       ← acelerômetro/giroscópio (I²C)
   ds18b20.h/cpp       ← temperatura (OneWire) com cache de tolerância
   sct013.h/cpp        ← corrente RMS (ADC)
+  analise_vibracao.h/cpp ← FFT 120/240Hz do MPU6050
+  diagnostico.h/cpp   ← ΔT, inrush e alarmes
 proteus/              ← .pdsprj e .hex da simulação
 ihm/                  ← dashboard Python (em desenvolvimento)
 docs/                 ← documentação Markdown + LaTeX
@@ -211,7 +213,8 @@ Causa fragmentação de heap. Use `char[]` com `snprintf` ou `strncpy`.
 ## Quando criar arquivos novos vs modificar existentes
 
 - **Sensor novo:** crie módulo próprio (`.h` + `.cpp`)
-- **Lógica de diagnóstico:** crie módulo `diagnostico.h/cpp` (não existe ainda — P3/P6)
+- **Lógica de diagnóstico:** use/estenda `diagnostico.h/cpp`
+- **Análise vibracional:** use/estenda `analise_vibracao.h/cpp`
 - **Comunicação alternativa:** modifique `publicador.cpp` (não crie módulo paralelo)
 - **Configuração nova:** adicione em `config.h`, nunca espalhe `constexpr` pelos módulos
 

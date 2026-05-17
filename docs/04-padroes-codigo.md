@@ -278,6 +278,8 @@ Ao revisar PR de um colega:
 - [ ] Constantes usam `constexpr` em vez de `#define`
 - [ ] Variáveis em escopo de arquivo são `static`
 - [ ] Não há código comentado ou `print` de debug deixado para trás
+- [ ] Sinais derivados ficam em módulo dedicado (`diagnostico`, `analise_vibracao`), não dentro do `main.cpp`
+- [ ] Alarmes usam `publicador::publicarAlarme()` e não montam JSON fora da camada de transporte
 
 ---
 

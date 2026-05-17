@@ -168,6 +168,8 @@ namespace sensor {
 
 **Ao adicionar um sensor novo:** criar par `.h`/`.cpp`, adicionar pino em `config.h`, incluir no `main.cpp`. **Não modifique outros módulos.**
 
+Sinais derivados que combinam leituras ou aplicam algoritmos ficam em módulos dedicados, como `analise_vibracao.h/cpp` (FFT 120/240Hz) e `diagnostico.h/cpp` (ΔT, inrush e alarmes). Não coloque essas regras diretamente no `main.cpp`.
+
 ### Camada de transporte unificada
 
 Toda saída de dados de sensor passa por `publicador::publicar()`:
@@ -177,6 +179,8 @@ publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
 ```
 
 Internamente, a função seleciona Serial (Arduino UNO) ou MQTT (ESP32) via `#if defined(ESP32)`.
+
+Alarmes estruturados passam por `publicador::publicarAlarme()`. Não monte JSON de alarme fora do `publicador`.
 
 **Nunca chame `Serial.print()` diretamente para dados de sensor.** Reserve `Serial.print()` para logs de inicialização e diagnóstico.
 

@@ -456,7 +456,7 @@ A organização dos tópicos segue hierarquia semântica para facilitar inscriç
 \textbf{Tópico} & \textbf{Tipo de dado} & \textbf{Unidade} \\
 \midrule
 \texttt{transformador/primario/corrente}     & Corrente eficaz (RMS)       & A      \\
-\texttt{transformador/primario/inrush}       & Flag + pico                 & A      \\
+\texttt{transformador/primario/inrush}       & Pico de energização         & Vpico (Proteus) / A (calibrado) \\
 \texttt{transformador/secundario/corrente}   & Corrente eficaz             & A      \\
 \texttt{transformador/nucleo/temperatura}    & Temperatura absoluta        & °C     \\
 \texttt{transformador/nucleo/delta\_t}       & Gradiente térmico           & °C     \\
@@ -620,32 +620,37 @@ void loop() {
 
 \subsection{Detecção do Inrush Current}
 
-O inrush ocorre no instante da energização. A detecção é feita monitorando a corrente do primário com alta frequência de amostragem e verificando se ultrapassa um limiar configurável:
+O inrush ocorre no instante da energização. A detecção é feita monitorando o primário com amostras instantâneas e verificando se ultrapassa um limiar configurável. Na simulação Proteus, esse pico é reportado em \texttt{Vpico}, pois o SCT-013 é substituído por uma VSINE já condicionada para o ADC. No hardware físico, após calibração, o mesmo fluxo pode representar corrente real em ampères.
 
 \begin{lstlisting}[style=cpp, caption={Detecção de Inrush Current}]
-#define LIMIAR_INRUSH_A  5.0   // ajustar para a corrente nominal do trafo
-#define JANELA_INRUSH_MS 500   // janela de tempo para captura (ms)
+constexpr float LIMIAR_INRUSH_VPICO = 0.95f;
+constexpr unsigned long JANELA_INRUSH_MS = 500UL;
+constexpr unsigned long COOLDOWN_INRUSH_MS = 3000UL;
 
-bool  inrushDetectado = false;
-float picoInrush      = 0.0;
+enum class EstadoInrush { Idle, Monitorando, Cooldown };
 
-void verificarInrush(float correnteAtual) {
-    static uint32_t tInicio = 0;
-    static bool     monitorando = false;
+static EstadoInrush estado = EstadoInrush::Idle;
+static unsigned long inicio_janela_ms = 0;
+static float pico_inrush = 0.0f;
 
-    // Inicio do monitoramento ao detectar pico acima do limiar
-    if (!monitorando && correnteAtual > LIMIAR_INRUSH_A) {
-        monitorando      = true;
-        tInicio          = millis();
-        inrushDetectado  = true;
-        picoInrush       = correnteAtual;
+Inrush atualizarInrush(float primario_vpico) {
+    const unsigned long agora_ms = millis();
+    Inrush resultado = {false, 0.0f};
+
+    if (estado == EstadoInrush::Idle &&
+        primario_vpico >= LIMIAR_INRUSH_VPICO) {
+        estado = EstadoInrush::Monitorando;
+        inicio_janela_ms = agora_ms;
+        pico_inrush = primario_vpico;
+    } else if (estado == EstadoInrush::Monitorando) {
+        if (primario_vpico > pico_inrush) pico_inrush = primario_vpico;
+        if (agora_ms - inicio_janela_ms >= JANELA_INRUSH_MS) {
+            resultado = {true, pico_inrush};
+            estado = EstadoInrush::Cooldown;
+        }
     }
 
-    // Atualizar pico durante a janela
-    if (monitorando) {
-        if (correnteAtual > picoInrush) picoInrush = correnteAtual;
-        if (millis() - tInicio > JANELA_INRUSH_MS) monitorando = false;
-    }
+    return resultado;
 }
 \end{lstlisting}
 
@@ -667,32 +672,38 @@ A FFT é aplicada sobre um buffer de amostras do MPU6050. A FFT (\textit{Fast Fo
 
 \noindent\textbf{Critério de Nyquist:} Para capturar uma frequência $f$, a taxa de amostragem deve ser pelo menos $f_s \geq 2f$. Para capturar 240~Hz (segunda harmônica), precisamos de $f_s \geq 480$~Hz. Usamos $f_s = 500$~Hz com folga.
 
-Para $f_s = 500$~Hz e $N = 256$ amostras: $\Delta f = 500/256 = 1{,}95$~Hz, resolução suficiente para isolar 120~Hz dos harmônicos adjacentes. A biblioteca \texttt{arduinoFFT} implementa o algoritmo eficientemente no ESP32:
+No firmware atual, o módulo \texttt{analise\_vibracao} coleta amostras de forma incremental no \texttt{loop()}, sem \texttt{delay()}. Para caber na RAM do Arduino UNO usado no Proteus, o buffer da simulação usa $N = 32$ amostras a $f_s = 500$~Hz. Isso produz $\Delta f = 15{,}625$~Hz: suficiente para validar o fluxo de dados e os tópicos MQTT na simulação, mas não para calibração metrológica final. No ESP32 físico, o buffer pode ser aumentado para 128 ou 256 amostras caso a validação do sensor real exija maior resolução espectral.
 
-\begin{lstlisting}[style=cpp, caption={FFT com arduinoFFT}]
+\begin{lstlisting}[style=cpp, caption={FFT incremental sem delay()}]
 #include <arduinoFFT.h>
 
-const uint16_t AMOSTRAS  = 256;
-const float    FREQ_SAMP = 500.0;  // Hz
+constexpr uint16_t AMOSTRAS_FFT = 32;
+constexpr float FREQ_AMOSTRAGEM_HZ = 500.0f;
 
-double vReal[AMOSTRAS], vImag[AMOSTRAS];
-arduinoFFT FFT = arduinoFFT(vReal, vImag, AMOSTRAS, FREQ_SAMP);
+static float v_real[AMOSTRAS_FFT];
+static float v_imag[AMOSTRAS_FFT];
+static uint16_t indice_amostra = 0;
+static ArduinoFFT<float> fft(v_real, v_imag,
+                             AMOSTRAS_FFT, FREQ_AMOSTRAGEM_HZ);
 
-float calcFFT_120hz() {
-    // Preencher buffer com leituras do MPU6050 (eixo Z)
-    for (uint16_t i = 0; i < AMOSTRAS; i++) {
-        vReal[i] = lerAceleracaoZ();  // valor em g
-        vImag[i] = 0;
-        delayMicroseconds(1000000 / FREQ_SAMP);  // pausa MICRO, nao millis
-    }
+void adicionarAmostra(float aceleracao_z) {
+    v_real[indice_amostra] = aceleracao_z;
+    v_imag[indice_amostra] = 0.0f;
+    indice_amostra++;
+    if (indice_amostra < AMOSTRAS_FFT) return;
 
-    FFT.Windowing(FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-    FFT.Compute(FFT_FORWARD);
-    FFT.ComplexToMagnitude();
+    indice_amostra = 0;
+    fft.dcRemoval();
+    fft.windowing(FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+    fft.compute(FFT_FORWARD);
+    fft.complexToMagnitude();
 
-    // Indice correspondente a 120 Hz: (120 / 500) * 256 = 61.44 -> indice 61
-    uint16_t idx120hz = (uint16_t)(120.0 / FREQ_SAMP * AMOSTRAS);
-    return vReal[idx120hz];
+    uint16_t idx120hz =
+        (uint16_t)((120.0f * AMOSTRAS_FFT / FREQ_AMOSTRAGEM_HZ) + 0.5f);
+    uint16_t idx240hz =
+        (uint16_t)((240.0f * AMOSTRAS_FFT / FREQ_AMOSTRAGEM_HZ) + 0.5f);
+    publicar(TOPICO_FFT_120HZ, v_real[idx120hz], "g");
+    publicar(TOPICO_FFT_240HZ, v_real[idx240hz], "g");
 }
 \end{lstlisting}
 
@@ -934,7 +945,7 @@ Cada integrante é dono de uma entrega clara e verificável, mas \textbf{P1 e P2
 \textbf{Data} & \textbf{Avaliação} & \textbf{Requisitos} \\
 \midrule
 18/05 & 2ª Avaliação &
-    Simulação no Wokwi ou Proteus com todos os componentes. Hardware virtual funcionando, captura de sinais, IHM local com dados simulados. Todos os requisitos demonstrados em software. \\
+    Simulação no Proteus com Arduino UNO e todos os componentes virtuais. Hardware virtual funcionando, captura de sinais, tópicos MQTT simulados via Serial e IHM local com dados simulados. \\
 \midrule
 25/05 & 2ª Avaliação (reposição) &
     Avaliação teórica para equipes sem projeto funcional. \\
@@ -950,10 +961,10 @@ Cada integrante é dono de uma entrega clara e verificável, mas \textbf{P1 e P2
 
 \begin{tcolorbox}[caixaAviso, title={Prioridades para 18/05}]
 \begin{itemize}[leftmargin=1cm, itemsep=2pt]
-    \item \textbf{P1:} Circuito de condicionamento simulado com fonte AC virtual no Wokwi;
+    \item \textbf{P1:} Circuito de condicionamento simulado com VSINE no Proteus;
     \item \textbf{P2:} Firmware base compilando e rodando na simulação;
-    \item \textbf{P3:} FFT calculando com dados mockados (seno 120~Hz gerado por software);
-    \item \textbf{P4:} Broker Mosquitto ativo, ESP32 publicando dados no tópico correto;
+    \item \textbf{P3:} FFT, $\Delta T$ e inrush publicados nos tópicos derivados;
+    \item \textbf{P4:} Broker Mosquitto ativo e ponte Serial--MQTT republicando os dados do Proteus;
     \item \textbf{P5:} Dashboard exibindo dados em tempo real, mesmo que parcialmente mockados;
     \item \textbf{P6:} Datalogger gravando CSV, pelo menos dois diagnósticos funcionando.
 \end{itemize}

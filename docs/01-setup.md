@@ -96,7 +96,7 @@ As bibliotecas Arduino são instaladas automaticamente na primeira compilação 
 
 ## 6. Carregar o .hex no Proteus
 
-1. Abra `proteus/diagnostico.pdsprj`
+1. Abra `proteus/MicroProject_3.0.pdsprj`
 2. Clique duplo no Arduino UNO no esquemático
 3. No campo **Program File**, clique no ícone de pasta
 4. Aponte para `.pio/build/uno/firmware.hex`
@@ -104,6 +104,8 @@ As bibliotecas Arduino são instaladas automaticamente na primeira compilação 
 6. Pressione **Play** (canto inferior esquerdo)
 
 O Virtual Terminal deve abrir mostrando as leituras dos sensores.
+
+Com o firmware atual, além das leituras básicas, o terminal também mostra os tópicos derivados `transformador/nucleo/delta_t`, `transformador/vibracao/fft_120hz`, `transformador/vibracao/fft_240hz` e, quando houver surto acima do limiar, `transformador/primario/inrush`.
 
 ---
 

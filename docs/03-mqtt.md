@@ -68,7 +68,7 @@ Todos os tópicos numéricos seguem o mesmo formato JSON:
 |---|---|---|
 | `ts` | inteiro | Timestamp Unix em segundos (uptime no Arduino, real no ESP32) |
 | `valor` | float | Valor medido, 4 casas decimais |
-| `unidade` | string | Unidade física (`C`, `Vrms`, `g`, `A`, `s`) |
+| `unidade` | string | Unidade física (`C`, `Vrms`, `Vpico`, `g`, `A`, `s`) |
 
 Para o tópico `transformador/status/alarme`, o payload é mais rico:
 
@@ -78,10 +78,12 @@ Para o tópico `transformador/status/alarme`, o payload é mais rico:
   "tipo": "vibracao_120hz",
   "severidade": "warning",
   "valor": 0.42,
-  "limite": 0.15,
-  "mensagem": "Amplitude 120Hz acima do limiar"
+  "limite": 0.20,
+  "mensagem": "Vibracao em 120Hz acima do limite"
 }
 ```
+
+Na simulação Proteus, `transformador/primario/inrush` publica o pico do sinal condicionado no ADC em `Vpico`. No hardware físico, após calibração do SCT-013, o mesmo tópico pode passar a representar corrente real em `A`.
 
 ---
 
@@ -94,6 +96,8 @@ publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
 ```
 
 A função encapsula o JSON e seleciona automaticamente entre Serial (Proteus) e MQTT (ESP32) via `#if defined(ESP32)`.
+
+Alarmes usam a função `publicador::publicarAlarme()`, mantendo o mesmo padrão de transporte. No Proteus, também saem como linha `[MQTT] transformador/status/alarme -> {...}` para que a ponte Serial→MQTT consiga republicar sem tratamento especial.
 
 **Implementação simplificada (`publicador.cpp`):**
 
@@ -216,7 +220,10 @@ Rode a simulação no Proteus + a ponte Python. No Terminal 1 devem aparecer men
 transformador/primario/corrente {"ts":4,"valor":0.6914,"unidade":"Vrms"}
 transformador/secundario/corrente {"ts":4,"valor":0.3461,"unidade":"Vrms"}
 transformador/nucleo/temperatura {"ts":4,"valor":26.5000,"unidade":"C"}
+transformador/nucleo/delta_t {"ts":4,"valor":1.5000,"unidade":"C"}
 transformador/vibracao/aceleracao {"ts":4,"valor":0.0000,"unidade":"g"}
+transformador/vibracao/fft_120hz {"ts":4,"valor":0.0000,"unidade":"g"}
+transformador/vibracao/fft_240hz {"ts":4,"valor":0.0000,"unidade":"g"}
 ```
 
 Esse é o mesmo dado que o ESP32 vai publicar no hardware físico. Toda a IHM pode ser desenvolvida e testada já com esses dados.

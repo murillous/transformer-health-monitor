@@ -69,8 +69,7 @@ diagnostico_transformador/
 ├── include/                  # Headers externos (vazio por padrão)
 ├── lib/                      # Bibliotecas locais
 ├── proteus/
-│   ├── diagnostico.pdsprj    # Projeto de simulação Proteus
-│   └── diagnostico.hex       # Binário compilado para simulação
+│   └── MicroProject_3.0.pdsprj  # Projeto de simulação Proteus
 ├── ihm/
 │   ├── dashboard.py          # Interface gráfica (Streamlit/NiceGUI)
 │   ├── mqtt_client.py        # Subscriber MQTT com fila de dados
@@ -264,7 +263,6 @@ framework = arduino
 lib_deps =
     paulstoffregen/OneWire @ ^2.3.8
     milesburton/DallasTemperature @ ^3.11.0
-    bblanchon/ArduinoJson @ ^7.0.0
     kosme/arduinoFFT @ ^2.0.1
 ```
 
@@ -274,7 +272,7 @@ lib_deps =
 2. Compile: `PlatformIO: Build` (atalho `Ctrl+Alt+B`)
 3. Localize o `.hex` gerado em `.pio/build/uno/firmware.hex`
 4. Copie o `.hex` para a pasta `proteus/`
-5. Abra `proteus/diagnostico.pdsprj`
+5. Abra `proteus/MicroProject_3.0.pdsprj`
 6. Clique duplo no Arduino UNO → campo **Program File** → selecione o `.hex`
 7. Dê **Play** na simulação
 8. Clique duplo no **Virtual Terminal** para ver o Serial Monitor
