@@ -51,7 +51,7 @@ Para detalhes da arquitetura, sempre consulte `docs/02-arquitetura.md` antes de 
 
 ## Convenções não-negociáveis
 
-### 1. Zero `delay()` no `loop()` principal
+### 1. Zero `delay()` em qualquer parte do firmware
 
 ```cpp
 // ❌ Proibido
@@ -68,7 +68,7 @@ void loop() {
 }
 ```
 
-**Exceção documentada:** `ds18b20.cpp` tem `delay(200)` interno por causa do modelo do Proteus — está comentado no código e deve ser removido no port pra ESP32.
+**Não há exceções.** Se um sensor parece exigir `delay()` por causa do protocolo, primeiro investigue se o problema é de configuração — foi o caso do DS18B20 no Proteus, resolvido ajustando propriedades do modelo (ver `docs/05-pegadinhas-proteus.md`).
 
 ### 2. Use `constexpr` em vez de `#define` para constantes
 
@@ -167,6 +167,8 @@ pio device monitor -b 9600
 
 ## Gotchas conhecidos
 
+Para o catálogo completo de comportamentos não-óbvios do Proteus, ver `docs/05-pegadinhas-proteus.md`. Os mais importantes:
+
 ### `snprintf` com `%f` não funciona no AVR
 
 A libc do AVR remove suporte a float em `printf` para economizar memória. Use `dtostrf()`:
@@ -181,13 +183,17 @@ snprintf(payload, sizeof(payload), "\"valor\":%s", buf);
 
 Tem duas sobrecargas `(int, int)` e `(uint8_t, uint8_t)`. Use `constexpr uint8_t` para o endereço (não `#define`) e o compilador resolve.
 
-### DS18B20 no Proteus tem leituras intermitentes
+### DS18B20 no Proteus requer ajuste de propriedades do modelo
 
-O módulo `ds18b20.cpp` já implementa cache da última leitura válida (`ultimaTempValida`). Se uma leitura vier inválida (NaN, -127, ou 85), retorna a última boa. Esse comportamento é **intencional** — não tente "consertar" removendo o cache.
+Sem o ajuste, o sensor retorna -127 ou NaN. A solução não é no código — é editar as propriedades do componente dentro do Proteus. Detalhes em `docs/05-pegadinhas-proteus.md`. O cache de última leitura válida no `ds18b20.cpp` continua relevante como salvaguarda — **não remova**.
 
 ### MPU6050 no Proteus trava eixo X em -1.00g
 
 Limitação do modelo `.dll` da biblioteca ElectronicTree. Não tem como corrigir, e não impacta o diagnóstico real (a FFT analisa variação, não valor absoluto).
+
+### VSINEs Primário/Secundário NÃO são conectadas ao TR1
+
+As VSINEs do esquemático Proteus são simuladores **independentes** do sinal já condicionado do SCT-013. O transformador TR1 fica isolado como ilustração conceitual. Tentar conectar as duas coisas quebra o circuito de medição.
 
 ### Sem WiFi no Proteus → MQTT não funciona diretamente na simulação
 
@@ -235,6 +241,7 @@ Imperativo, descrição curta, sem ponto final. Corpo opcional explicando o porq
 | Como o firmware é organizado | `docs/02-arquitetura.md` |
 | Como funciona o MQTT do projeto | `docs/03-mqtt.md` |
 | Convenções de código completas | `docs/04-padroes-codigo.md` |
+| Pegadinhas do Proteus | `docs/05-pegadinhas-proteus.md` |
 | Status atual e o que falta | `docs/ROADMAP.md` |
 | Contexto técnico profundo | `docs/projeto_transformador.pdf` |
 
@@ -248,6 +255,7 @@ Imperativo, descrição curta, sem ponto final. Corpo opcional explicando o porq
 - **Antes de propor mudança grande:** consultar o `ROADMAP.md` para entender o que está em andamento
 - **Ao gerar código novo:** seguir as convenções de `docs/04-padroes-codigo.md` sem desvio
 - **Ao escrever comentários:** explicar o *porquê*, não o *quê* — código limpo já mostra o quê
-- **Ao encontrar `delay()`:** questionar se é justificado (só ok em `setup()` ou com comentário explicando)
+- **Ao encontrar `delay()`:** questionar imediatamente — não há exceção justificada no projeto atual
+- **Ao debugar problema do Proteus:** consultar `docs/05-pegadinhas-proteus.md` antes — provavelmente já foi documentado
 
 Se algo não estiver claro nos docs, **pergunte antes de gerar código** — projeto acadêmico com avaliação por equipe não tolera retrabalho silencioso.

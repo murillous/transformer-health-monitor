@@ -60,9 +60,28 @@ Reinicie o computador após a instalação.
 
 ---
 
-## 4. Compilar o firmware
+## 4. Configurar o modelo do DS18B20 no Proteus
 
-No terminal integrado do VSCode (`Ctrl+\``):
+**Importante:** o DS18B20 do Proteus vem com timings padrão incompatíveis com a biblioteca DallasTemperature. Sem ajustar, o sensor retorna -127 ou NaN nas leituras.
+
+Após adicionar o DS18B20 ao esquemático, clique duplo nele e configure:
+
+| Propriedade | Valor |
+|---|---|
+| Data Pulse Delay High | 40µs |
+| Data Pulse Delay Low | 140µs |
+| Time Reset Low | 400µs |
+| Time Slot | 120µs |
+| Conversion Time | 10ms |
+| Data Write Time | 1ms |
+
+Detalhes do porquê em [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md).
+
+---
+
+## 5. Compilar o firmware
+
+No terminal integrado do VSCode (`` Ctrl+` ``):
 
 ```bash
 # Compilar para Arduino UNO (simulação Proteus)
@@ -75,7 +94,7 @@ As bibliotecas Arduino são instaladas automaticamente na primeira compilação 
 
 ---
 
-## 5. Carregar o .hex no Proteus
+## 6. Carregar o .hex no Proteus
 
 1. Abra `proteus/diagnostico.pdsprj`
 2. Clique duplo no Arduino UNO no esquemático
@@ -88,7 +107,7 @@ O Virtual Terminal deve abrir mostrando as leituras dos sensores.
 
 ---
 
-## 6. (Opcional) Instalar Mosquitto para testes MQTT
+## 7. (Opcional) Instalar Mosquitto para testes MQTT
 
 Necessário apenas se for trabalhar na camada IoT ou IHM.
 
@@ -116,7 +135,7 @@ A mensagem deve aparecer no Terminal 1 instantaneamente.
 
 ---
 
-## 7. (Opcional) Setup da IHM Python
+## 8. (Opcional) Setup da IHM Python
 
 Necessário apenas para P5 e P6.
 
@@ -149,6 +168,13 @@ pip install -r requirements.txt
 - Verifique se a biblioteca MPU6050 está instalada
 - Use Proteus 8.13 ou mais recente
 
+### DS18B20 retorna -127 ou temperatura zerada
+- Confira que ajustou as propriedades do modelo (passo 4 acima)
+- Detalhes em [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md#2-ds18b20-retorna--127-ou-nan-intermitentemente)
+
+### Outros comportamentos estranhos do Proteus
+- Veja o catálogo completo em [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md) — provavelmente já documentamos
+
 ### Erro `Logic contention` no log do Proteus
 - **Pode ignorar.** É o comportamento normal do protocolo OneWire (DS18B20)
 
@@ -159,3 +185,4 @@ pip install -r requirements.txt
 Depois de tudo funcionando, leia:
 - [`02-arquitetura.md`](./02-arquitetura.md) para entender a organização do código
 - [`04-padroes-codigo.md`](./04-padroes-codigo.md) antes do primeiro commit
+- [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md) para entender as adaptações do simulador

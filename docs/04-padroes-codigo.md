@@ -9,7 +9,7 @@ Convenções da equipe para manter o código consistente e revisável. Leia ante
 1. **Código claro vence código clever.** Se precisa de comentário pra entender, simplifica.
 2. **Nomes descritivos.** Variáveis chamadas `x`, `tmp`, `data` são proibidas fora de loops curtos.
 3. **Funções curtas.** Ideal: 20 linhas. Aceitável: 50. Acima disso, divida.
-4. **Zero `delay()` no `loop()`.** Use `millis()`. Exceções devem ser documentadas com comentário.
+4. **Zero `delay()` no firmware.** Use `millis()`. Sem exceções.
 
 ---
 
@@ -92,7 +92,7 @@ float calcularRMS(uint8_t pino)
 i++;  // incrementa i
 
 // ✅ Bom — quando o "por quê" não é óbvio
-delay(750);  // necessário no Proteus: modelo do DS18B20 trava sem isso
+sensor.setResolution(12);  // padrão — outras resoluções quebram no Proteus
 ```
 
 ### Organização de um módulo
@@ -152,7 +152,7 @@ Serial.println(F("Sensor inicializado"));
 
 No ESP32 a diferença é menor (mais RAM disponível), mas manter `F()` é compatível e bom hábito.
 
-### `delay()` no `loop()` é proibido
+### `delay()` é proibido em qualquer parte do firmware
 
 Toda temporização usa `millis()`:
 
@@ -171,7 +171,7 @@ void loop() {
 }
 ```
 
-Exceções: `setup()` pode ter `delay()` (não há concorrência). Funções de inicialização de sensor podem ter `delay()` interno se o protocolo do sensor exigir.
+Se aparecer um caso onde parece "necessário" usar `delay()` (geralmente por timing de protocolo de sensor), **primeiro investigue se o problema é de configuração** — foi o caso do DS18B20 no Proteus, que parecia exigir `delay(750)` mas na verdade só precisava de ajuste das propriedades do modelo. Detalhes em [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md).
 
 ---
 
@@ -273,7 +273,7 @@ Ao revisar PR de um colega:
 - [ ] Funciona na simulação (se for firmware)
 - [ ] Segue as convenções de nomenclatura
 - [ ] Tem documentação Doxygen nas funções públicas
-- [ ] Não introduz `delay()` no `loop()` principal
+- [ ] **Não introduz `delay()` em nenhuma parte do firmware**
 - [ ] Strings literais usam `F()`
 - [ ] Constantes usam `constexpr` em vez de `#define`
 - [ ] Variáveis em escopo de arquivo são `static`
@@ -292,12 +292,4 @@ Ao revisar PR de um colega:
 
 ## Quando quebrar uma regra
 
-Toda regra acima pode ser quebrada com **justificativa documentada no código**:
-
-```cpp
-// JUSTIFICATIVA: O modelo do DS18B20 no Proteus requer delay explícito.
-// No port para ESP32, substituir por máquina de estados com millis().
-delay(200);
-```
-
-Se você precisa quebrar uma regra repetidamente, **traz pra discussão no grupo** — talvez a regra precise mudar.
+Se você acha que precisa quebrar uma das regras acima, **traz pra discussão no grupo antes** — talvez a regra precise mudar, talvez exista uma solução melhor que você não enxergou. Foi assim que descobrimos a solução do DS18B20 no Proteus: a "necessidade" de `delay()` desapareceu ajustando as propriedades do modelo. Investigar configuração antes de assumir que a regra precisa ser quebrada quase sempre vale a pena.

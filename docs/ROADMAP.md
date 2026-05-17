@@ -11,11 +11,11 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 | Módulo | Progresso | Responsável |
 |---|---|---|
 | 🔧 Hardware | ▓▓▓▓▓▓░░░░ 60% | P1 |
-| 💾 Firmware Base | ▓▓▓▓▓▓▓▓░░ 80% | P2 |
+| 💾 Firmware Base | ▓▓▓▓▓▓▓▓▓░ 85% | P2 |
 | 📊 DSP & Algoritmos | ▓▓░░░░░░░░ 20% | P3 |
 | 📡 IoT & MQTT | ▓▓▓░░░░░░░ 30% | P4 |
 | 🖥️ IHM Python | ░░░░░░░░░░ 0% | P5 |
-| 📋 Diagnóstico & Docs | ▓▓▓▓░░░░░░ 40% | P6 |
+| 📋 Diagnóstico & Docs | ▓▓▓▓▓░░░░░ 50% | P6 |
 
 ---
 
@@ -28,10 +28,12 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Conectar MPU6050 via I²C (SDA→A4, SCL→A5, AD0→GND)
 - [x] Adicionar DS18B20 com pull-up 4.7kΩ
 - [x] Conectar DS18B20 ao pino D4
+- [x] Ajustar propriedades do modelo DS18B20 no Proteus (ver `05-pegadinhas-proteus.md`)
 - [x] Montar simulação SCT-013 primário (VSINE 60Hz 1V + R 100Ω + C 10µF + divisor)
 - [x] Montar simulação SCT-013 secundário (VSINE 60Hz 0,5V + R 100Ω + C 10µF + divisor)
 - [x] Conectar nós centrais aos pinos A0 e A1
 - [x] Adicionar Virtual Terminal no pino TX (D1/TXD)
+- [x] Adicionar transformador TR1 ilustrativo (não conectado ao Arduino)
 - [x] Validar leituras dos 4 sensores no Virtual Terminal
 - [ ] Documentar fotos do esquemático final na pasta `proteus/`
 
@@ -72,12 +74,12 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Leitura de temperatura com tolerância a falhas (cache)
 - [x] Leitura RMS dos SCT-013 (A0 e A1)
 - [x] Loop principal não-bloqueante com `millis()`
+- [x] Substituir `delay()` do DS18B20 por solução não-bloqueante (resolvido ajustando propriedades do modelo no Proteus — sem necessidade de máquina de estados)
 - [x] Validar precisão do cálculo RMS (~0.707V no primário)
 
 ### Portabilidade ESP32
 
 - [ ] Adicionar `env:esp32` no `platformio.ini`
-- [ ] Substituir `delay()` do DS18B20 por máquina de estados (`millis()`)
 - [ ] Testar compilação para ESP32 (sem gravar ainda)
 - [ ] Configurar credenciais WiFi em `publicador.cpp`
 - [ ] Gravar firmware no ESP32 físico
@@ -210,6 +212,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Arquitetura do firmware (`02-arquitetura.md`)
 - [x] Guia MQTT (`03-mqtt.md`)
 - [x] Padrões de código (`04-padroes-codigo.md`)
+- [x] Pegadinhas do Proteus (`05-pegadinhas-proteus.md`)
 - [x] Roadmap/checklist (este documento)
 - [ ] Guia IHM Python (criar quando IHM começar a tomar forma)
 - [ ] Slides da apresentação 18/05
@@ -225,6 +228,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Simulação Proteus funcionando com 4 sensores
 - [x] Firmware modular compilando sem warnings
 - [x] Leituras estáveis no Virtual Terminal
+- [x] Firmware totalmente não-bloqueante (zero `delay()`)
 - [ ] Pipeline `[MQTT]` Serial → broker funcionando (ponte Python)
 - [ ] IHM mínima recebendo dados do broker (mesmo que parcial)
 - [ ] Pelo menos um diagnóstico funcionando (ex.: alerta de temperatura)

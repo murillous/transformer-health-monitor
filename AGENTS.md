@@ -111,7 +111,7 @@ static int contador = 0;  // só visível dentro deste .cpp
 
 ```cpp
 // CORRETO — explica o porquê
-delay(750);  // necessário no Proteus: modelo do DS18B20 trava sem isso
+sensor.setResolution(12);  // padrão — outras resoluções quebram no Proteus
 
 // ERRADO — não diz nada
 i++;  // incrementa i
@@ -197,7 +197,7 @@ void loop() {
 }
 ```
 
-**Única exceção atualmente justificada:** `delay()` interno em `ds18b20.cpp` por causa do modelo do Proteus. Está documentado com `// NOTE: ...` no código. No port para ESP32, deve ser substituído por máquina de estados.
+**Não há `delay()` justificado em nenhuma parte do firmware atual.** Se uma situação parecer exigir `delay()` (geralmente por timing de protocolo de sensor), investigar primeiro se o problema é de configuração do componente — foi o caso do DS18B20 no Proteus, que parecia precisar de `delay(750)` mas só precisava de ajuste de propriedades do modelo.
 
 ---
 
@@ -248,12 +248,15 @@ Wire.requestFrom(MPU_ADDR, (uint8_t)2);  // sem warning
 
 ## Known issues / não tentar consertar
 
+Catálogo completo em `docs/05-pegadinhas-proteus.md`. Resumo:
+
 | Issue | Status |
 |---|---|
 | MPU6050 trava eixo X em -1.00g no Proteus | Limitação do modelo da biblioteca ElectronicTree. Não impacta diagnóstico. |
-| DS18B20 retorna -127 intermitentemente no Proteus | Modelo do Proteus tem bug. Mitigado por cache de última leitura válida — **não remova o cache**. |
+| DS18B20 retorna -127 intermitentemente | **Resolvido** ajustando propriedades do modelo no Proteus (ver `docs/05-pegadinhas-proteus.md`). Cache no `ds18b20.cpp` mantido como salvaguarda. |
 | `Logic contention` no log do Proteus | Comportamento normal do protocolo OneWire — **ignorar**. |
 | MQTT real não funciona no Proteus | Proteus não simula WiFi. Usar a ponte serial→MQTT em Python (`ihm/ponte_serial_mqtt.py`). |
+| VSINEs Primário/Secundário aparentam conectáveis ao TR1 | **Não conectar.** São simuladores independentes do sinal já condicionado do SCT-013. TR1 fica isolado como ilustração. |
 
 ---
 
@@ -286,7 +289,7 @@ Checklist antes de abrir PR:
 - [ ] Roda na simulação Proteus
 - [ ] Segue nomenclatura do projeto
 - [ ] Tem Doxygen em funções públicas novas
-- [ ] Sem `delay()` no `loop()` (exceto exceções documentadas)
+- [ ] **Sem `delay()` em nenhuma parte do firmware**
 - [ ] Sem `Serial.print()` direto para dados de sensor
 - [ ] `ROADMAP.md` atualizado se a tarefa estava listada lá
 
@@ -301,6 +304,7 @@ Checklist antes de abrir PR:
 | `docs/02-arquitetura.md` | Estrutura do firmware, como adicionar sensor |
 | `docs/03-mqtt.md` | Tópicos, payloads, broker, ponte serial→MQTT |
 | `docs/04-padroes-codigo.md` | Convenções completas (lê antes do primeiro commit) |
+| `docs/05-pegadinhas-proteus.md` | Comportamentos não-óbvios do Proteus e workarounds |
 | `docs/ROADMAP.md` | Status do projeto e o que falta — fonte da verdade |
 | `docs/projeto_transformador.pdf` | Documento técnico formal para a avaliação |
 
@@ -311,6 +315,7 @@ Checklist antes de abrir PR:
 - **Não invente funcionalidade.** Se o usuário pede algo ambíguo, pergunte antes de implementar.
 - **Respeite a abstração existente.** Não crie novo módulo de comunicação paralelo ao `publicador` — estenda o existente.
 - **Pense em ambas plataformas.** Toda mudança deve funcionar em Arduino UNO e ESP32 (ou ter ramo `#if defined(ESP32)` claro).
-- **Não remova workarounds documentados** (cache do DS18B20, `delay()` no ds18b20.cpp) sem entender por que existem.
+- **Não remova workarounds documentados** (cache do DS18B20, isolamento do TR1) sem entender por que existem.
+- **Antes de propor `delay()`:** investigar se o problema real é de configuração. Não há `delay()` justificado no firmware atual.
 - **Consulte o `ROADMAP.md`** antes de propor grandes mudanças — pode estar atribuído a outra pessoa.
 - **Idioma da documentação e comentários:** português brasileiro. Nomes de variáveis e funções: português ou inglês são aceitáveis, mas seja consistente dentro do mesmo módulo.
