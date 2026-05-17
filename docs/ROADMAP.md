@@ -79,7 +79,7 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 
 ### Portabilidade ESP32
 
-- [ ] Adicionar `env:esp32` no `platformio.ini`
+- [x] Adicionar `env:esp32` no `platformio.ini`
 - [ ] Testar compilação para ESP32 (sem gravar ainda)
 - [ ] Configurar credenciais WiFi em `publicador.cpp`
 - [ ] Gravar firmware no ESP32 físico
