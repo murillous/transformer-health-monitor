@@ -7,7 +7,7 @@
 namespace {
 
 constexpr uint16_t AMOSTRAS_FFT = 32;
-constexpr float FREQ_AMOSTRAGEM_HZ = 500.0f;
+constexpr float FREQ_AMOSTRAGEM_HZ = 1920.0f;  // 60Hz/bin — cobre harmônicas 120..600Hz sem leakage; N=32 ajusta RAM AVR
 constexpr unsigned long INTERVALO_AMOSTRA_US =
     (unsigned long)(1000000.0f / FREQ_AMOSTRAGEM_HZ);
 
@@ -16,14 +16,6 @@ static float v_imag[AMOSTRAS_FFT];
 static uint16_t indice_amostra = 0;
 static unsigned long ultima_amostra_us = 0;
 static ArduinoFFT<float> fft(v_real, v_imag, AMOSTRAS_FFT, FREQ_AMOSTRAGEM_HZ);
-
-static float amplitudeNoBin(float frequencia_hz)
-{
-    const uint16_t indice =
-        (uint16_t)((frequencia_hz * AMOSTRAS_FFT / FREQ_AMOSTRAGEM_HZ) + 0.5f);
-    if (indice >= AMOSTRAS_FFT / 2) return NAN;
-    return v_real[indice];
-}
 
 } // namespace
 
@@ -66,13 +58,21 @@ Espectro atualizar()
     fft.complexToMagnitude();
 
     espectro.novo = true;
-    espectro.fft_120hz = amplitudeNoBin(120.0f);
-    espectro.fft_240hz = amplitudeNoBin(240.0f);
+    espectro.fft_120hz = amplitudeEmFreq(120.0f);
+    espectro.fft_240hz = amplitudeEmFreq(240.0f);
     return espectro;
 }
 
 const float* magnitudes()             { return v_real; }
 uint16_t      numAmostras()           { return AMOSTRAS_FFT; }
 float         frequenciaAmostragemHz(){ return FREQ_AMOSTRAGEM_HZ; }
+
+float amplitudeEmFreq(float frequencia_hz)
+{
+    const uint16_t indice =
+        (uint16_t)((frequencia_hz * AMOSTRAS_FFT / FREQ_AMOSTRAGEM_HZ) + 0.5f);
+    if (indice >= AMOSTRAS_FFT / 2) return NAN;
+    return v_real[indice];
+}
 
 } // namespace analise_vibracao

@@ -70,7 +70,7 @@ export default function Chart({ titulo, series }: Props) {
               axisLine={false}
               tickMargin={8}
             />
-            <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+            <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, "auto"]} />
             <ChartTooltip
               content={
                 <ChartTooltipContent

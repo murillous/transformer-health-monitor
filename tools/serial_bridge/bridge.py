@@ -9,6 +9,10 @@ via WebSocket.
 Uso:
     python bridge.py --port COM5 --broker localhost --baud 9600
 
+O firmware no Arduino UNO (Proteus) usa 9600 bps — limitação do simulador.
+ESP32 não usa esta ponte (fala MQTT direto). Confirme que o COMPIM e o
+Virtual Terminal do Proteus estão configurados com a mesma taxa do firmware.
+
 Requisitos: pyserial, paho-mqtt (ver requirements.txt).
 """
 
@@ -51,7 +55,7 @@ def reescrever_ts_unix(payload: str) -> str:
     return payload
 
 
-def loop(ser: serial.Serial, cliente: mqtt.Client, verbose: bool) -> None:
+def loop(ser: serial.Serial, cliente: mqtt.Client, quiet: bool, debug: bool) -> None:
     while True:
         bruto: Optional[bytes] = ser.readline()
         if not bruto:
@@ -61,13 +65,13 @@ def loop(ser: serial.Serial, cliente: mqtt.Client, verbose: bool) -> None:
             continue
         m = PADRAO.match(linha)
         if not m:
-            if verbose:
+            if debug:
                 print(f"[skip] {linha}", file=sys.stderr)
             continue
         topico, payload = m.group(1), m.group(2)
         payload = reescrever_ts_unix(payload)
         cliente.publish(topico, payload, qos=0)
-        if verbose:
+        if not quiet:
             print(f"-> {topico} {payload}")
 
 
@@ -77,7 +81,8 @@ def main() -> int:
     parser.add_argument("--baud", type=int, default=9600)
     parser.add_argument("--broker", default="localhost")
     parser.add_argument("--broker-port", type=int, default=1883)
-    parser.add_argument("--quiet", action="store_true", help="Suprime log por mensagem")
+    parser.add_argument("--quiet", action="store_true", help="Suprime log de mensagens publicadas")
+    parser.add_argument("--debug", action="store_true", help="Loga linhas que não casam regex [MQTT] (ruidoso)")
     args = parser.parse_args()
 
     try:
@@ -95,7 +100,7 @@ def main() -> int:
 
     print(f"Lendo {args.port}@{args.baud} -> {args.broker}:{args.broker_port}")
     try:
-        loop(ser, cli, verbose=not args.quiet)
+        loop(ser, cli, quiet=args.quiet, debug=args.debug)
     except KeyboardInterrupt:
         pass
     finally:

@@ -18,30 +18,29 @@
 #include "analise_vibracao.h"
 
 static unsigned long ultimaLeituraMs = 0;
-static float ultimaFft120Hz = NAN;
-static float ultimaFft240Hz = NAN;
+static bool  espectroDisponivel = false;
+
+static const int FREQS_HARMONICAS[] = {120, 240, 360, 480, 600};
+static constexpr uint16_t N_HARMONICAS =
+    sizeof(FREQS_HARMONICAS) / sizeof(FREQS_HARMONICAS[0]);
+
+// Snapshot das amplitudes capturado logo após o FFT terminar — evita ler
+// v_real depois que atualizar() sobrescreveu os bins com novas amostras.
+static float ampsHarmonicas[N_HARMONICAS] = {NAN, NAN, NAN, NAN, NAN};
 
 // ═══════════════════════════════════════════════════════════════════════════
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(BAUD_SERIAL);
     Wire.begin();
 
-    Serial.println(F("==================================="));
-    Serial.println(F("   DIAGNOSTICO DE TRANSFORMADOR    "));
-    Serial.println(F("==================================="));
-
     publicador::iniciar();
-
-    Serial.print(F("[MPU6050] "));
-    Serial.println(mpu6050::iniciar() ? F("OK") : F("FALHA"));
-
-    Serial.print(F("[DS18B20] Sensores detectados: "));
-    Serial.println(ds18b20::iniciar());
-
-    Serial.println(F("[SCT-013] A0=primario  A1=secundario"));
+    mpu6050::iniciar();
+    ds18b20::iniciar();
     analise_vibracao::iniciar();
-    Serial.println(F("-----------------------------------"));
+    // Banner removido: bridge espera apenas linhas "[MQTT] ...". Use Virtual
+    // Terminal pra diagnóstico de inicialização caso precise; o log foi tirado
+    // do Serial pra reduzir ruído na ponte e economizar banda a 9600 baud.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -51,14 +50,14 @@ void loop()
 
     const analise_vibracao::Espectro espectro = analise_vibracao::atualizar();
     if (espectro.novo) {
-        ultimaFft120Hz = espectro.fft_120hz;
-        ultimaFft240Hz = espectro.fft_240hz;
-        publicador::publicar(TOPICO_FFT_120HZ, ultimaFft120Hz, "g");
-        publicador::publicar(TOPICO_FFT_240HZ, ultimaFft240Hz, "g");
-        publicador::publicarEspectro(TOPICO_ESPECTRO,
-                                     analise_vibracao::magnitudes(),
-                                     analise_vibracao::numAmostras(),
-                                     analise_vibracao::frequenciaAmostragemHz());
+        // Capturar amplitudes AGORA enquanto v_real ainda tem magnitudes —
+        // a próxima chamada de atualizar() vai sobrescrever esses bins com
+        // novas amostras brutas do MPU6050.
+        for (uint16_t i = 0; i < N_HARMONICAS; i++) {
+            ampsHarmonicas[i] = analise_vibracao::amplitudeEmFreq((float)FREQS_HARMONICAS[i]);
+        }
+        espectroDisponivel = true;
+        // publicação acontece no tick lento abaixo — evita saturar Serial
     }
 
     const diagnostico::Inrush inrush =
@@ -85,9 +84,23 @@ void loop()
     publicador::publicar(TOPICO_TEMP_NUCLEO, temp, "C");
     publicador::publicar(TOPICO_DELTA_T,     deltaT, "C");
 
-    diagnostico::publicarAlarmes(temp, deltaT, ultimaFft120Hz, {false, 0.0f});
+    if (espectroDisponivel) {
+        publicador::publicar(TOPICO_FFT_120HZ, ampsHarmonicas[0], "g");
+        publicador::publicar(TOPICO_FFT_240HZ, ampsHarmonicas[1], "g");
+        publicador::publicarEspectro(TOPICO_ESPECTRO, FREQS_HARMONICAS, ampsHarmonicas, N_HARMONICAS);
+    }
+
+    // Forma de onda dos dois lados — captura burst + publica array.
+    // Buffer único reutilizado (~128 bytes na stack) pra economizar RAM AVR.
+    {
+        float ondaBuf[N_AMOSTRAS_ONDA];
+        sct013::capturarOnda(PINO_SCT_P, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
+        publicador::publicarOnda(TOPICO_ONDA_P, ondaBuf, N_AMOSTRAS_ONDA);
+        sct013::capturarOnda(PINO_SCT_S, ondaBuf, N_AMOSTRAS_ONDA, PERIODO_ONDA_US);
+        publicador::publicarOnda(TOPICO_ONDA_S, ondaBuf, N_AMOSTRAS_ONDA);
+    }
+
+    diagnostico::publicarAlarmes(temp, deltaT, ampsHarmonicas[0], {false, 0.0f});
 
     publicador::publicar(TOPICO_HEARTBEAT, (float)(millis() / 1000UL), "s");
-
-    Serial.println(F("-----------------------------------"));
 }

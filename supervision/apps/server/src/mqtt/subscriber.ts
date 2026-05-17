@@ -47,6 +47,16 @@ export class MQTTSubscriber extends EventEmitter {
           return;
         }
 
+        if ((topico === TOPICOS_MQTT.ondaPrimario || topico === TOPICOS_MQTT.ondaSecundario)
+            && Array.isArray(parsed.amostras)) {
+          this.emit("leitura", {
+            topico,
+            ts: Number(parsed.ts ?? Math.floor(Date.now() / 1000)),
+            amostras: parsed.amostras,
+          });
+          return;
+        }
+
         const data = leituraSchema.parse(parsed);
 
         store.push({

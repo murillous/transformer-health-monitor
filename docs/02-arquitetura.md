@@ -99,7 +99,7 @@ No ESP32, publica de fato no broker via PubSubClient (com `mqtt.setBufferSize(10
 Funções expostas:
 - `publicar(topico, valor, unidade)` — payload `{ts, valor, unidade}` para qualquer escalar.
 - `publicarAlarme(tipo, severidade, valor, limite, mensagem)` — payload estruturado em `transformador/status/alarme`.
-- `publicarEspectro(topico, magnitudes, n_amostras, fs_hz)` — array `{ts, espectro:[{freq, amplitude}…]}`. No UNO, faz stream direto pelo `Serial.print` para não alocar buffer grande na RAM; no ESP32, monta um `char[800]` único e publica.
+- `publicarEspectro(topico, freqs[], amplitudes[], n_bins)` — array `{ts, espectro:[{freq, amplitude}…]}` com pares paralelos. No UNO, faz stream direto pelo `Serial.print`; no ESP32, monta um `char[400]` e publica. Caller decide quais frequências enviar — atualmente `main.cpp` envia só 120, 240, 360, 480, 600Hz.
 
 **Quem mexe:** P4 (IoT & MQTT).
 
@@ -150,9 +150,10 @@ analise_vibracao::Espectro analise_vibracao::atualizar();
 const float*               analise_vibracao::magnitudes();
 uint16_t                   analise_vibracao::numAmostras();
 float                      analise_vibracao::frequenciaAmostragemHz();
+float                      analise_vibracao::amplitudeEmFreq(float hz);  // bin mais próximo
 ```
 
-No Arduino UNO, o buffer usa 32 amostras @ 500Hz → 16 bins úteis, Nyquist = 250Hz. Resolução espectral = 15,625Hz/bin. O `main.cpp` consome `magnitudes()` para chamar `publicador::publicarEspectro()` quando `Espectro::novo == true`. No ESP32, pode ser aumentado depois se a validação física exigir maior precisão.
+No Arduino UNO, o buffer usa 32 amostras @ 1920Hz → 16 bins úteis, Nyquist = 960Hz. Resolução espectral = **60Hz/bin** — múltiplos de 120Hz caem em bins pares sem leakage (120Hz→2, 240Hz→4, 360Hz→6, 480Hz→8, 600Hz→10). N=32 é o teto prático no AVR — N=64 (testado) satura a RAM e trava o firmware no Proteus. O alinhamento foi pensado para a frequência de magnetostrição do núcleo (120Hz) e suas harmônicas. O `main.cpp` extrai as amplitudes das 5 harmônicas alvo via `amplitudeEmFreq()` e chama `publicador::publicarEspectro()` com arrays paralelos `freqs[]`/`amplitudes[]`. Publicação acontece no tick lento (não em cada FFT — evita saturar o Serial 9600 do Proteus). No ESP32, N pode ser aumentado depois (tem RAM de sobra) se a validação física exigir maior resolução espectral.
 
 **Quem mexe:** P3 (DSP & Algoritmos).
 

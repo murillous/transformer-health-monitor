@@ -29,7 +29,7 @@ void iniciar()
 #if defined(ESP32)
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-    mqtt.setBufferSize(1024);  // espectro JSON cabe folgado
+    mqtt.setBufferSize(512);   // espectro JSON com 5 harmônicas cabe folgado
 #else
     // No Arduino o Serial já foi inicializado no setup()
 #endif
@@ -81,42 +81,71 @@ void publicarAlarme(const char* tipo, const char* severidade,
 #endif
 }
 
-void publicarEspectro(const char* topico, const float* magnitudes,
-                      uint16_t n_amostras, float fs_hz)
+void publicarEspectro(const char* topico, const int* freqs,
+                      const float* amplitudes, uint16_t n_bins)
 {
-    const uint16_t n_bins = n_amostras / 2;  // metade util do FFT
     const unsigned long ts = millis() / 1000UL;
 
 #if defined(ESP32)
-    char payload[800];
+    char payload[400];
     int pos = snprintf(payload, sizeof(payload),
                        "{\"ts\":%lu,\"espectro\":[", ts);
-    for (uint16_t i = 1; i < n_bins && pos < (int)sizeof(payload) - 40; i++) {
+    for (uint16_t i = 0; i < n_bins && pos < (int)sizeof(payload) - 40; i++) {
         char ampBuf[12];
-        dtostrf(magnitudes[i], 0, 4, ampBuf);
-        const int freq = (int)((i * fs_hz / (float)n_amostras) + 0.5f);
+        dtostrf(amplitudes[i], 0, 4, ampBuf);
         pos += snprintf(payload + pos, sizeof(payload) - pos,
                         "%s{\"freq\":%d,\"amplitude\":%s}",
-                        (i > 1) ? "," : "", freq, ampBuf);
+                        (i > 0) ? "," : "", freqs[i], ampBuf);
     }
     snprintf(payload + pos, sizeof(payload) - pos, "]}");
     mqtt.publish(topico, payload);
 #else
-    // Stream direto pro Serial: nao aloca buffer grande na RAM do AVR
     Serial.print(F("[MQTT] "));
     Serial.print(topico);
     Serial.print(F(" -> {\"ts\":"));
     Serial.print(ts);
     Serial.print(F(",\"espectro\":["));
-    for (uint16_t i = 1; i < n_bins; i++) {
-        if (i > 1) Serial.print(',');
+    for (uint16_t i = 0; i < n_bins; i++) {
+        if (i > 0) Serial.print(',');
         Serial.print(F("{\"freq\":"));
-        Serial.print((int)((i * fs_hz / (float)n_amostras) + 0.5f));
+        Serial.print(freqs[i]);
         Serial.print(F(",\"amplitude\":"));
         char ampBuf[12];
-        dtostrf(magnitudes[i], 0, 4, ampBuf);
+        dtostrf(amplitudes[i], 0, 4, ampBuf);
         Serial.print(ampBuf);
         Serial.print('}');
+    }
+    Serial.println(F("]}"));
+#endif
+}
+
+void publicarOnda(const char* topico, const float* amostras, uint16_t n)
+{
+    const unsigned long ts = millis() / 1000UL;
+
+#if defined(ESP32)
+    char payload[600];  // 32 amostras × ~8 chars + overhead cabe folgado
+    int pos = snprintf(payload, sizeof(payload),
+                       "{\"ts\":%lu,\"amostras\":[", ts);
+    for (uint16_t i = 0; i < n && pos < (int)sizeof(payload) - 12; i++) {
+        char buf[10];
+        dtostrf(amostras[i], 0, 2, buf);
+        pos += snprintf(payload + pos, sizeof(payload) - pos,
+                        "%s%s", (i > 0) ? "," : "", buf);
+    }
+    snprintf(payload + pos, sizeof(payload) - pos, "]}");
+    mqtt.publish(topico, payload);
+#else
+    Serial.print(F("[MQTT] "));
+    Serial.print(topico);
+    Serial.print(F(" -> {\"ts\":"));
+    Serial.print(ts);
+    Serial.print(F(",\"amostras\":["));
+    for (uint16_t i = 0; i < n; i++) {
+        if (i > 0) Serial.print(',');
+        char buf[10];
+        dtostrf(amostras[i], 0, 2, buf);
+        Serial.print(buf);
     }
     Serial.println(F("]}"));
 #endif

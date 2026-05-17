@@ -36,10 +36,13 @@ transformador/
 │   ├── aceleracao        ← g no eixo Z (bruto)
 │   ├── fft_120hz         ← amplitude no bin próximo a 120Hz
 │   ├── fft_240hz         ← amplitude no bin próximo a 240Hz
-│   └── espectro          ← array completo de bins do FFT (15 bins, 16-234Hz)
+│   └── espectro          ← 5 harmônicas alvo: 120, 240, 360, 480, 600Hz
 └── status/
     ├── alarme            ← eventos críticos com severidade
     └── heartbeat         ← uptime (UNO) ou Unix time (ESP32)
+
+onda_corrente_primario     ← burst de 32 amostras @ 1kHz (forma de onda do A0)
+onda_corrente_secundario   ← burst de 32 amostras @ 1kHz (forma de onda do A1)
 ```
 
 **Por que essa organização:**
@@ -98,7 +101,7 @@ Severidade é sempre `"aviso"` ou `"critico"`. O server traduz para o campo inte
 }
 ```
 
-15 bins do FFT do `analise_vibracao` (32 amostras @ 500Hz, índices 1..15 — DC removido). O dashboard aplica suavização EMA (α=0.35) e marca linhas de referência em 120Hz e 240Hz.
+5 harmônicas extraídas do FFT do `analise_vibracao` (32 amostras @ 1920Hz, resolução 60Hz/bin — múltiplos de 120Hz caem em bins pares sem leakage: 120→bin 2, 240→bin 4, 360→bin 6, 480→bin 8, 600→bin 10). N=32 é o teto prático para o AVR — N=64 satura a RAM e trava o firmware no simulador. O firmware extrai só as 5 frequências de interesse (pedido do professor) via `amplitudeEmFreq()`. Payload cabe em ~180 chars — folga grande nos 9600 baud do Proteus. O dashboard aplica suavização EMA (α=0.35) e marca linhas de referência nas 5 harmônicas.
 
 ---
 
@@ -109,17 +112,17 @@ Toda publicação passa por uma função única:
 ```cpp
 publicador::publicar("transformador/nucleo/temperatura", 26.5, "C");
 publicador::publicarAlarme("vibracao_120hz", "aviso", 0.42, 0.20, "Vibracao acima do limite");
-publicador::publicarEspectro(TOPICO_ESPECTRO,
-                             analise_vibracao::magnitudes(),
-                             analise_vibracao::numAmostras(),
-                             analise_vibracao::frequenciaAmostragemHz());
+
+const int   freqs[] = {120, 240, 360, 480, 600};
+const float amps[]  = {0.18f, 0.09f, 0.04f, 0.02f, 0.01f};
+publicador::publicarEspectro(TOPICO_ESPECTRO, freqs, amps, 5);
 ```
 
 A função encapsula o JSON e seleciona automaticamente entre **Serial** (Proteus) e **MQTT** (ESP32) via `#if defined(ESP32)`.
 
 Detalhes de implementação do espectro:
 - **UNO:** stream direto pelo `Serial.print` — sem buffer grande na RAM (AVR só tem 2KB).
-- **ESP32:** monta `char payload[800]` único e chama `mqtt.publish()`. Em `iniciar()` chama `mqtt.setBufferSize(1024)` para garantir que o cliente PubSubClient aceite o pacote.
+- **ESP32:** monta `char payload[400]` único e chama `mqtt.publish()`. Em `iniciar()` chama `mqtt.setBufferSize(512)` (folga pra payload de ~180 chars com 5 harmônicas).
 
 ---
 
@@ -214,7 +217,7 @@ UNO Serial (TXD) ── COMPIM ── COM4 ── par com0com ── COM5 ──
 ### Detalhes do COMPIM
 
 - **TXD do Arduino → TXD do COMPIM**, não RXD. O COMPIM é uma ponte para o host, e seu TXD funciona como entrada do circuito simulado.
-- Propriedade `Physical port` aponta para uma ponta do par (ex.: `COM4`), baud `9600`.
+- Propriedade `Physical port` aponta para uma ponta do par (ex.: `COM4`), baud `9600` no UNO (limite prático do simulador Proteus). Constante centralizada em `config.h::BAUD_SERIAL` — ESP32 usa 115200.
 - Outro programa com `COM4` aberta = COMPIM falha silencioso. Fechar Arduino IDE, PuTTY, outras instâncias.
 
 ### Detalhes do com0com

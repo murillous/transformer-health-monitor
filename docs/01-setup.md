@@ -220,6 +220,10 @@ O COMPIM mapeia a serial simulada do Arduino para uma COM real do Windows. **Sem
 | Virtual Baud Rate | `9600` |
 | Virtual Data Bits | `8` |
 
+> **Por que 9600 (e não 115200)?** O ATmega328P real do UNO suporta 115200 sem problema, mas o **simulador Proteus** roda o core mais devagar e perde bits acima de 9600 — testado empiricamente. O `config.h` seleciona `BAUD_SERIAL = 9600` no UNO e `115200` no ESP32 via `#if defined(ESP32)`. Se mudar o firmware, lembre de ajustar baud do COMPIM **e do Virtual Terminal** — desencontro = lixo na tela.
+>
+> A 9600, o ciclo de 2s comporta 7 escalares + espectro de 5 harmônicas (~180 chars) com folga grande na banda. Se ampliar a lista de harmônicas em `main.cpp::FREQS_HARMONICAS`, recalcule — cada harmônica extra adiciona ~35 chars (~36ms a 9600).
+
 6. Salvar o projeto.
 
 > **Atenção:** se outro programa estiver com `COM4` aberta (Arduino IDE, bridge anterior, PuTTY), o COMPIM falha silenciosamente. Fechar tudo antes de dar Play.
@@ -229,7 +233,7 @@ O COMPIM mapeia a serial simulada do Arduino para uma COM real do Windows. **Sem
 Dar Play no Proteus. Em outro terminal:
 
 ```powershell
-python -c "import serial; s=serial.Serial('COM5',9600,timeout=5); [print(s.readline()) for _ in range(5)]"
+python -c "import serial; s=serial.Serial('COM5',115200,timeout=5); [print(s.readline()) for _ in range(5)]"
 ```
 
 Devem aparecer 5 linhas `b'[MQTT] transformador/...\\r\\n'`. Se vazio, o COMPIM não mapeou ou TXD não foi conectado.
@@ -300,7 +304,7 @@ Abrir `http://localhost:5173`.
 Com Proteus em Play + ponte rodando + Mosquitto rodando + server conectado:
 
 - Cards de temperatura, ΔT, corrente primária/secundária, vibração 120Hz e 240Hz se atualizam a cada ~2s.
-- Espectro FFT mostra 15 bins reais (16-234Hz).
+- Espectro FFT mostra 5 barras nas harmônicas alvo (120, 240, 360, 480, 600Hz) quando há sinal.
 - Painel de diagnóstico fuzzy roda a cada ciclo, mostrando risco operacional e tendências.
 - Alarmes aparecem em toast e ficam registrados em `Alertas`.
 

@@ -168,14 +168,14 @@ Gera dados sintéticos realistas via POST `/api/simular/iniciar`:
 | `transformador/vibracao/aceleracao` | mesmo padrão | firmware | mesmo |
 | `transformador/vibracao/fft_120hz` | mesmo padrão | firmware ou simulador | mesmo |
 | `transformador/vibracao/fft_240hz` | mesmo padrão | firmware ou simulador | mesmo |
-| `transformador/vibracao/espectro` | `{topico, ts, espectro: [{freq, amplitude}]}` (15 bins 16-234Hz no firmware atual) | firmware ou simulador | mesmo |
-| `onda_corrente_primario` | `{topico, ts, amostras: number[]}` | apenas simulador | 200ms |
-| `onda_corrente_secundario` | `{topico, ts, amostras: number[]}` | apenas simulador | 200ms |
+| `transformador/vibracao/espectro` | `{topico, ts, espectro: [{freq, amplitude}]}` (5 harmônicas no firmware atual: 120, 240, 360, 480, 600Hz) | firmware ou simulador | mesmo |
+| `onda_corrente_primario` | `{topico, ts, amostras: number[]}` (32 amostras @ 1kHz no firmware) | firmware ou simulador | 2s (firmware) / 200ms (simulador) |
+| `onda_corrente_secundario` | `{topico, ts, amostras: number[]}` | firmware ou simulador | mesmo |
 | `transformador/status/alarme` | `{topico, ts, tipo, severidade, valor, limite, mensagem}` | firmware | sob evento |
 | `transformador/status/heartbeat` | `{topico, ts, valor, unidade}` | firmware | ~2s |
 | `diagnostico` | resultado completo do fuzzy | server | 1s |
 
-> O firmware **não publica** `onda_corrente_*` (não tem como amostrar a 200ms ainda). Esses tópicos vêm apenas do simulador embutido e existem para validar o `WaveformChart`. Quando o dashboard estiver consumindo apenas dados reais, os gráficos de onda ficam vazios.
+> O firmware publica `onda_corrente_*` a cada slow tick (2s, não 200ms — ESP32 com mais headroom pode reduzir o intervalo no futuro). 32 amostras a 1kHz cobrem ~2 ciclos de 60Hz, suficiente para visualização. O simulador embutido continua publicando a 200ms para suavizar a animação quando rodando sem firmware.
 
 ### Mapping severidade → sev
 

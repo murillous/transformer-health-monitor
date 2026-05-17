@@ -33,4 +33,9 @@ const float* magnitudes();
 uint16_t      numAmostras();
 float         frequenciaAmostragemHz();
 
+/**
+ * @brief Amplitude do bin mais proximo de uma frequencia (valido apos FFT).
+ */
+float amplitudeEmFreq(float frequencia_hz);
+
 } // namespace analise_vibracao

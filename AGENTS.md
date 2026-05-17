@@ -61,7 +61,7 @@ pio run -t clean
 pio run -e esp32 -t upload
 
 # Monitor serial
-pio device monitor -b 9600
+pio device monitor -b 9600     # UNO; ESP32 usa 115200
 ```
 
 **Artefato da simulação:** `.pio/build/uno/firmware.hex` deve ser carregado no Arduino UNO dentro do Proteus para rodar a simulação.

@@ -130,7 +130,7 @@ O script `tools/serial_bridge/bridge.py` lê o Serial do Proteus via porta COM v
 **Checklist rápido:**
 
 1. O fio do Virtual Terminal RXD está conectado ao pino **PD1/TXD** do Arduino (pino 1)? **Não no PD0/RXD** (pino 0) — esse é entrada, não saída.
-2. O baud rate do Virtual Terminal (propriedade) está em **9600**, igual ao `Serial.begin(9600)` no código?
+2. O baud rate do Virtual Terminal (propriedade) está em **9600**, igual ao `BAUD_SERIAL` do `config.h` no ramo UNO? (Empiricamente o simulador Proteus perde bits acima de 9600 — UNO real suporta 115200, mas a simulação não. O ESP32 usa 115200 — constante única definida em `config.h` via `#if defined(ESP32)`.)
 3. A janela do Virtual Terminal pode estar minimizada ou atrás da janela principal do Proteus. Clique duplo no componente durante a simulação para reabrir.
 4. Você carregou o `.hex` correto no Arduino? Clique duplo no Arduino UNO → campo Program File.
 

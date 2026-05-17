@@ -172,7 +172,7 @@ pio run -t clean
 pio run -e esp32 -t upload
 
 # Monitor serial pós-upload
-pio device monitor -b 9600
+pio device monitor -b 9600     # UNO; ESP32 usa 115200
 ```
 
 ---
@@ -211,7 +211,7 @@ As VSINEs do esquemático Proteus são simuladores **independentes** do sinal j�
 
 Não tente fazer o Arduino UNO falar MQTT — não vai funcionar. A estratégia é:
 - Arduino imprime no Serial em formato `[MQTT] tópico -> JSON`
-- Esquemático Proteus expõe a Serial via componente **COMPIM** (TXD do UNO → TXD do COMPIM, baud 9600)
+- Esquemático Proteus expõe a Serial via componente **COMPIM** (TXD do UNO → TXD do COMPIM, baud 9600 — limite prático do simulador). ESP32 fala MQTT direto, sem COMPIM.
 - com0com (Windows) ou socat (Linux) cria um par de COMs virtuais
 - `tools/serial_bridge/bridge.py` lê a outra ponta do par e republica no broker Mosquitto local
 - O server `supervision/apps/server` ingere o broker via `MQTTSubscriber` e propaga via WebSocket

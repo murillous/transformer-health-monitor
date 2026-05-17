@@ -45,12 +45,23 @@ void publicarAlarme(const char* tipo, const char* severidade,
  * @brief Publica espectro de FFT como array de pares {freq, amplitude}.
  *
  * @param topico       Topico MQTT de destino.
- * @param magnitudes   Vetor de magnitudes (DC em indice 0 — ignorado).
- * @param n_amostras   Tamanho original do buffer FFT (numero de amostras).
- * @param fs_hz        Frequencia de amostragem em Hz.
+ * @param freqs        Vetor de frequencias (Hz inteiros) a publicar.
+ * @param amplitudes   Vetor paralelo com a amplitude de cada frequencia.
+ * @param n_bins       Numero de pares (tamanho dos dois vetores).
  */
-void publicarEspectro(const char* topico, const float* magnitudes,
-                      uint16_t n_amostras, float fs_hz);
+void publicarEspectro(const char* topico, const int* freqs,
+                      const float* amplitudes, uint16_t n_bins);
+
+/**
+ * @brief Publica burst de amostras (forma de onda) como JSON.
+ *
+ * Payload: {"ts":...,"amostras":[a0,a1,...,a_{n-1}]}.
+ *
+ * @param topico    Topico MQTT.
+ * @param amostras  Vetor de amostras (em volts ja com bias removido).
+ * @param n         Numero de amostras.
+ */
+void publicarOnda(const char* topico, const float* amostras, uint16_t n);
 
 /**
  * @brief Mantém a conexão MQTT viva (só no ESP32).

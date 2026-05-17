@@ -22,4 +22,15 @@ float lerInstantaneoAbs(uint8_t pino)
     return fabs(tensao);
 }
 
+void capturarOnda(uint8_t pino, float* out, uint16_t n, uint16_t periodo_us)
+{
+    const unsigned long t0 = micros();
+    for (uint16_t i = 0; i < n; i++) {
+        while ((micros() - t0) < (unsigned long)i * periodo_us) {
+            // spin — espera até o instante da próxima amostra
+        }
+        out[i] = (analogRead(pino) * VREF / ADC_RES) - BIAS;
+    }
+}
+
 } // namespace sct013

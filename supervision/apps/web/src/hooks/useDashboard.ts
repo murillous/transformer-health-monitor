@@ -103,6 +103,7 @@ export function useDashboard() {
   const [historicoRisco, setHistoricoRisco] = useState<{ ts: number; score: number }[]>([]);
   const [ondaPrimario, setOndaPrimario] = useState<number[]>([]);
   const [ondaSecundario, setOndaSecundario] = useState<number[]>([]);
+  const [historicoEspectro, setHistoricoEspectro] = useState<Record<number, PontoGrafico[]>>({});
   const espectroRef = useRef<{ freq: number; amplitude: number }[]>([]);
   const carregado = useRef(false);
 
@@ -192,19 +193,31 @@ export function useDashboard() {
       const raw = data.espectro as { freq: number; amplitude: number }[];
       const prev = espectroRef.current;
 
+      let processado: { freq: number; amplitude: number }[];
       if (prev.length === 0) {
-        espectroRef.current = raw;
-        setEspectro(raw);
+        processado = raw;
       } else {
-        const smoothed = raw.map((bin, i) => ({
+        processado = raw.map((bin, i) => ({
           freq: bin.freq,
           amplitude: prev[i]
             ? Math.round((ALPHA_EMA * bin.amplitude + (1 - ALPHA_EMA) * prev[i].amplitude) * 1000) / 1000
             : bin.amplitude,
         }));
-        espectroRef.current = smoothed;
-        setEspectro(smoothed);
       }
+      espectroRef.current = processado;
+      setEspectro(processado);
+
+      // Histórico por harmônica — alimenta o Chart "Vibração (g)" com todas as 5
+      const tsMs = typeof data.ts === "number" ? data.ts * 1000 : Date.now();
+      setHistoricoEspectro((prevHist) => {
+        const next = { ...prevHist };
+        for (const bin of processado) {
+          const serie = [...(prevHist[bin.freq] ?? []), { timestamp: tsMs, valor: bin.amplitude }];
+          if (serie.length > MAX_PONTOS) serie.shift();
+          next[bin.freq] = serie;
+        }
+        return next;
+      });
       return;
     }
 
@@ -273,5 +286,5 @@ export function useDashboard() {
     setHistoricoAlertas([]);
   }, []);
 
-  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, diagnostico, historicoRisco, ondaPrimario, ondaSecundario };
+  return { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, limparHistoricoAlertas, espectro, historicoEspectro, diagnostico, historicoRisco, ondaPrimario, ondaSecundario };
 }

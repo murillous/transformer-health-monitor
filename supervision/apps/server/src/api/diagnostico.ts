@@ -6,6 +6,7 @@ import { store } from "../db/store";
 const router = Router();
 
 const PYTHON_SCRIPT = path.resolve(__dirname, "../../../intelligence/main.py");
+const PYTHON_BIN = process.platform === "win32" ? "python" : "python3";
 
 const MAPA: Record<string, string> = {
   "transformador/nucleo/temperatura": "temperatura",
@@ -249,7 +250,7 @@ export function executarDiagnostico(): Promise<unknown> {
       vida_consumida: vidaConsumida > 0 ? vidaConsumida : null,
     };
 
-    const proc = spawn("python3", [PYTHON_SCRIPT], {
+    const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 

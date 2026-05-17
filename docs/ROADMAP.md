@@ -99,14 +99,14 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 ### FFT — análise vibracional
 
 - [x] Adicionar biblioteca `kosme/arduinoFFT` ao `platformio.ini`
-- [x] Coletar buffer de amostras do MPU6050 (eixo Z, ~500Hz)
+- [x] Coletar buffer de amostras do MPU6050 (eixo Z, 1920Hz / 32 amostras — N=64 satura RAM do AVR)
 - [x] Aplicar janelamento (Hamming)
 - [x] Calcular FFT do buffer
 - [x] Extrair amplitude na frequência de 120Hz
 - [x] Extrair amplitude na frequência de 240Hz (2ª harmônica)
 - [x] Publicar nos tópicos `vibracao/fft_120hz` e `vibracao/fft_240hz`
 - [x] Expor vetor de magnitudes via `analise_vibracao::magnitudes()`
-- [x] Publicar espectro completo (15 bins) em `transformador/vibracao/espectro`
+- [x] Publicar espectro nas 5 harmônicas alvo (120, 240, 360, 480, 600Hz) em `transformador/vibracao/espectro`
 - [ ] Validar com sinal sintético conhecido (gerar 120Hz puro, verificar pico)
 - [ ] Avaliar aumento de N_AMOSTRAS no ESP32 para melhorar resolução (físico)
 
@@ -184,8 +184,8 @@ Status atual de cada módulo do projeto. Marque `[x]` quando completar uma taref
 - [x] Página `Relatorio` para gerar PDF
 - [x] Card `MetricCard` com `border-l-4` colorido por severidade
 - [x] Gráficos de linha (`Chart`)
-- [x] Gráfico de espectro (`SpectrumChart` — domínio 0-250Hz após ajuste para os bins reais do FFT)
-- [x] Gráficos de onda (`WaveformChart`) — esperam dados `onda_corrente_*` que o firmware atual não publica (mantidos para hardware físico futuro)
+- [x] Gráfico de espectro (`SpectrumChart` — domínio 0-720Hz com linhas de referência em 120/240/360/480/600Hz)
+- [x] Gráficos de onda (`WaveformChart`) — firmware publica burst de 32 amostras @ 1kHz por lado a cada slow tick
 - [x] `DiagnosticoPanel` + `DiagnosticoResumo`
 - [x] `AlertasResumo`
 - [x] Notificações toast via sonner

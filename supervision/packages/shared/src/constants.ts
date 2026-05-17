@@ -12,6 +12,8 @@ export const TOPICOS_MQTT = {
   vibracaoEspectro: "transformador/vibracao/espectro",
   alarme: "transformador/status/alarme",
   heartbeat: "transformador/status/heartbeat",
+  ondaPrimario: "onda_corrente_primario",
+  ondaSecundario: "onda_corrente_secundario",
 } as const;
 
 export const TOPICOS_INSCREVER = Object.values(TOPICOS_MQTT);

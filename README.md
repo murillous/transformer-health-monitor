@@ -229,7 +229,7 @@ Como o Proteus não tem stack TCP/IP, o script `tools/serial_bridge/bridge.py` f
 | `transformador/vibracao/aceleracao` | Aceleração eixo Z | g |
 | `transformador/vibracao/fft_120hz` | Amplitude no bin próximo a 120Hz | g |
 | `transformador/vibracao/fft_240hz` | Amplitude no bin próximo a 240Hz | g |
-| `transformador/vibracao/espectro` | Array completo de bins do FFT (15 bins, 16-234Hz) | g por bin |
+| `transformador/vibracao/espectro` | Amplitudes nas 5 harmônicas pedidas pelo professor: 120, 240, 360, 480, 600Hz | g por bin |
 | `transformador/status/alarme` | JSON estruturado com `tipo`, `severidade`, `valor`, `limite`, `mensagem` | — |
 | `transformador/status/heartbeat` | Uptime do firmware (UNO) ou Unix time (ESP32) | s |
 
@@ -262,15 +262,16 @@ Como o Proteus não tem stack TCP/IP, o script `tools/serial_bridge/bridge.py` f
 {
   "ts": 1748000000,
   "espectro": [
-    { "freq": 16,  "amplitude": 0.0012 },
-    { "freq": 31,  "amplitude": 0.0024 },
-    { "freq": 125, "amplitude": 0.1840 },
-    { "freq": 234, "amplitude": 0.0921 }
+    { "freq": 120, "amplitude": 0.1840 },
+    { "freq": 240, "amplitude": 0.0921 },
+    { "freq": 360, "amplitude": 0.0410 },
+    { "freq": 480, "amplitude": 0.0152 },
+    { "freq": 600, "amplitude": 0.0078 }
   ]
 }
 ```
 
-> Range derivado do FFT atual (32 amostras @ 500Hz): bins 1..15 cobrindo 16-234Hz. Nyquist = 250Hz.
+> FFT atual: 32 amostras @ 1920Hz → resolução 60Hz/bin, múltiplos de 120Hz caem exatos em bins pares sem leakage (120→2, 240→4, 360→6, 480→8, 600→10). N=32 ajusta a memória do AVR (N=64 saturava a RAM e travava o firmware no Proteus). Por decisão do projeto (pedido do professor), publicamos só as 5 harmônicas relevantes — fundamental de magnetostrição (120Hz) e as 4 harmônicas seguintes (240, 360, 480, 600Hz). Reduz banda na serial 9600 do Proteus.
 
 ---
 
@@ -290,7 +291,7 @@ Como o Proteus não tem stack TCP/IP, o script `tools/serial_bridge/bridge.py` f
 
 1. **Compilar firmware:** abrir o projeto no VSCode → `pio run -e uno` → `.hex` sai em `.pio/build/uno/firmware.hex`.
 2. **Carregar no Proteus:** abrir `proteus/MicroProject_3.0.pdsprj` → clique duplo no Arduino UNO → campo **Program File** → apontar para o `.hex`.
-3. **Configurar COMPIM no esquemático:** componente `COMPIM` conectado ao TXD do Arduino (TXD do UNO ligado ao **TXD do COMPIM** — não RXD), propriedade `Physical port` apontando para uma das pontas do par virtual (ex.: `COM4`), baud `9600`.
+3. **Configurar COMPIM no esquemático:** componente `COMPIM` conectado ao TXD do Arduino (TXD do UNO ligado ao **TXD do COMPIM** — não RXD), propriedade `Physical port` apontando para uma das pontas do par virtual (ex.: `COM4`), baud `9600` (limite prático do simulador Proteus — silício real do UNO suporta 115200, mas a simulação perde bits).
 4. **Subir a ponte:** `python tools/serial_bridge/bridge.py --port COM5 --baud 9600 --broker localhost` — lê a outra ponta do par virtual e republica no broker.
 5. **Subir o servidor de supervisão:** `cd supervision && npm install && npm run dev` — sobe Express :3001 + Vite :5173.
 6. **Dar Play no Proteus.** Em ~2s, dados começam a fluir do Proteus → ponte → broker → server → dashboard.

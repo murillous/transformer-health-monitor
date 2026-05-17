@@ -27,4 +27,17 @@ float lerRMS(uint8_t pino);
  */
 float lerInstantaneoAbs(uint8_t pino);
 
+/**
+ * @brief Captura um burst de amostras (tensao com bias removido) no pino.
+ *
+ * Bloqueia por aprox n * periodo_us. Usado para enviar a forma de onda
+ * ao dashboard. Chamar apenas no tick lento — bloqueia o loop principal.
+ *
+ * @param pino       Pino analogico.
+ * @param out        Vetor de saida (tamanho n).
+ * @param n          Numero de amostras.
+ * @param periodo_us Intervalo entre amostras em microssegundos.
+ */
+void capturarOnda(uint8_t pino, float* out, uint16_t n, uint16_t periodo_us);
+
 } // namespace sct013
