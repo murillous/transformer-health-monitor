@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 import type { Registro, AlarmeMQTT } from "@transformer-monitor/shared";
 
 const DB_PATH = path.resolve(process.cwd(), "data", "monitor.db");
@@ -8,6 +9,7 @@ let db: Database.Database;
 
 export function getDB(): Database.Database {
   if (!db) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");

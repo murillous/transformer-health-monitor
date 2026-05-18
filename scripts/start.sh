@@ -12,6 +12,8 @@
 #   ./scripts/start.sh
 #   COM_PORT=/dev/ttyUSB0 ./scripts/start.sh
 #   SERIAL_PORT=/tmp/ttyV1 MQTT_BROKER=192.168.1.10 ./scripts/start.sh
+#   ./scripts/start.sh --com-port /dev/ttyUSB0
+#   ./scripts/start.sh --no-bridge
 
 set -euo pipefail
 
@@ -25,111 +27,291 @@ COM_PORT="${COM_PORT:-${SERIAL_PORT:-}}"
 MQTT_BROKER="${MQTT_BROKER:-localhost}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 NO_BRIDGE=0
-for arg in "$@"; do
-    case "$arg" in
-        --no-bridge) NO_BRIDGE=1 ;;
-        --com-port=*) COM_PORT="${arg#--com-port=}" ;;
+
+# Cores
+C_CYAN='\033[1;36m'
+C_GREEN='\033[1;32m'
+C_YELLOW='\033[1;33m'
+C_RED='\033[1;31m'
+C_OFF='\033[0m'
+
+step() { printf "%b==> %s%b\n" "$C_CYAN" "$*" "$C_OFF"; }
+ok()   { printf "    %bOK%b %s\n" "$C_GREEN" "$C_OFF" "$*"; }
+warn() { printf "    %b!!%b %s\n" "$C_YELLOW" "$C_OFF" "$*"; }
+err()  { printf "    %bXX%b %s\n" "$C_RED" "$C_OFF" "$*"; }
+
+has() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+usage() {
+    cat <<USAGE
+Uso:
+  ./scripts/start.sh [opcoes]
+
+Opcoes:
+  --no-bridge              Nao sobe a ponte serial
+  --com-port PORTA         Porta serial da ponte, ex.: /dev/ttyUSB0
+  --com-port=PORTA         Mesmo que acima
+  --mqtt-broker HOST       Broker MQTT, padrao: localhost
+  --mqtt-broker=HOST       Mesmo que acima
+  --mqtt-port PORTA        Porta MQTT usada na verificacao, padrao: 1883
+  --mqtt-port=PORTA        Mesmo que acima
+  -h, --help               Mostra esta ajuda
+
+Variaveis de ambiente:
+  COM_PORT=/dev/ttyUSB0
+  SERIAL_PORT=/dev/ttyUSB0
+  MQTT_BROKER=localhost
+  MQTT_PORT=1883
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-bridge)
+            NO_BRIDGE=1
+            shift
+            ;;
+        --com-port=*)
+            COM_PORT="${1#--com-port=}"
+            shift
+            ;;
+        --com-port)
+            if [[ $# -lt 2 ]]; then
+                err "--com-port precisa de uma porta"
+                usage
+                exit 1
+            fi
+            COM_PORT="$2"
+            shift 2
+            ;;
+        --mqtt-broker=*)
+            MQTT_BROKER="${1#--mqtt-broker=}"
+            shift
+            ;;
+        --mqtt-broker)
+            if [[ $# -lt 2 ]]; then
+                err "--mqtt-broker precisa de um host"
+                usage
+                exit 1
+            fi
+            MQTT_BROKER="$2"
+            shift 2
+            ;;
+        --mqtt-port=*)
+            MQTT_PORT="${1#--mqtt-port=}"
+            shift
+            ;;
+        --mqtt-port)
+            if [[ $# -lt 2 ]]; then
+                err "--mqtt-port precisa de uma porta"
+                usage
+                exit 1
+            fi
+            MQTT_PORT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            err "Argumento desconhecido: $1"
+            usage
+            exit 1
+            ;;
     esac
 done
 
-# Cores
-C_CYAN='\033[1;36m'; C_GREEN='\033[1;32m'; C_YELLOW='\033[1;33m'; C_RED='\033[1;31m'; C_OFF='\033[0m'
-step() { echo -e "${C_CYAN}==> $*${C_OFF}"; }
-ok()   { echo -e "    ${C_GREEN}OK${C_OFF} $*"; }
-warn() { echo -e "    ${C_YELLOW}!!${C_OFF} $*"; }
-err()  { echo -e "    ${C_RED}XX${C_OFF} $*"; }
+require_file() {
+    if [[ ! -f "$1" ]]; then
+        err "Arquivo nao encontrado: $1"
+        exit 1
+    fi
+}
 
-has() { command -v "$1" >/dev/null 2>&1; }
+test_python_modules() {
+    # Retorna 0 se todos os modulos importarem.
+    # Retorna 1 se algum modulo estiver ausente ou quebrado.
+    "$PYTHON_BIN" - "$@" >/dev/null 2>&1 <<'PY'
+import importlib
+import sys
 
-# ─── Pre-requisitos basicos ───────────────────────────────────────────────
+for module in sys.argv[1:]:
+    try:
+        importlib.import_module(module)
+    except Exception:
+        sys.exit(1)
+
+sys.exit(0)
+PY
+}
+
+test_tcp_port() {
+    local host="$1"
+    local port="$2"
+
+    # Usa Python para evitar diferencas entre nc, timeout e /dev/tcp
+    # em Linux/macOS/Git Bash.
+    "$PYTHON_BIN" - "$host" "$port" >/dev/null 2>&1 <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+
+try:
+    port = int(sys.argv[2])
+except ValueError:
+    sys.exit(1)
+
+try:
+    with socket.create_connection((host, port), timeout=2):
+        pass
+except OSError:
+    sys.exit(1)
+
+sys.exit(0)
+PY
+}
+
+# --- Pre-requisitos basicos -----------------------------------------------
 step "Verificando ferramentas base"
 
-if ! has node; then err "Node nao encontrado no PATH"; exit 1; fi
+if ! has node; then
+    err "Node nao encontrado no PATH"
+    exit 1
+fi
 ok "node $(node --version)"
 
-if ! has npm; then err "npm nao encontrado no PATH"; exit 1; fi
+if ! has npm; then
+    err "npm nao encontrado no PATH"
+    exit 1
+fi
 ok "npm $(npm --version)"
 
 PYTHON_BIN=""
-for c in python3 python py; do
-    if has "$c"; then PYTHON_BIN="$c"; break; fi
+for candidate in python3 python py; do
+    if has "$candidate"; then
+        PYTHON_BIN="$candidate"
+        break
+    fi
 done
-if [[ -z "$PYTHON_BIN" ]]; then err "Python nao encontrado no PATH"; exit 1; fi
+
+if [[ -z "$PYTHON_BIN" ]]; then
+    err "Python nao encontrado no PATH"
+    exit 1
+fi
 ok "python ($PYTHON_BIN) $($PYTHON_BIN --version 2>&1)"
 
-# ─── Dependencias npm (workspaces supervision) ────────────────────────────
+# --- Dependencias npm (workspaces supervision) ----------------------------
 step "Verificando dependencias npm em supervision/"
+
 if [[ ! -d "$SUPERVISION_DIR/node_modules" ]]; then
-    warn "node_modules ausente — rodando npm install (pode demorar)"
-    (cd "$SUPERVISION_DIR" && npm install)
+    warn "node_modules ausente, rodando npm install (pode demorar)"
+
+    if ! (cd "$SUPERVISION_DIR" && npm install); then
+        err "npm install falhou"
+        exit 1
+    fi
 else
     ok "node_modules presente"
 fi
 
-# ─── Dependencias Python: intelligence ────────────────────────────────────
+# --- Dependencias Python: intelligence ------------------------------------
 step "Verificando dependencias Python do motor fuzzy"
-if ! "$PYTHON_BIN" -c "import numpy" 2>/dev/null; then
-    warn "numpy ausente — instalando requirements de intelligence"
-    "$PYTHON_BIN" -m pip install -r "$INTELLIGENCE_DIR/requirements.txt"
+
+require_file "$INTELLIGENCE_DIR/requirements.txt"
+
+if ! test_python_modules numpy; then
+    warn "numpy ausente ou quebrado, instalando requirements de intelligence"
+
+    if ! "$PYTHON_BIN" -m pip install -r "$INTELLIGENCE_DIR/requirements.txt"; then
+        err "pip install falhou (intelligence)"
+        exit 1
+    fi
 else
     ok "numpy presente"
 fi
 
-# ─── Dependencias Python: bridge ──────────────────────────────────────────
+# --- Dependencias Python: bridge ------------------------------------------
 step "Verificando dependencias Python da ponte serial"
-if ! "$PYTHON_BIN" -c "import paho.mqtt.client, serial" 2>/dev/null; then
-    warn "paho-mqtt/pyserial ausentes — instalando requirements da bridge"
-    "$PYTHON_BIN" -m pip install -r "$BRIDGE_DIR/requirements.txt"
+
+require_file "$BRIDGE_DIR/requirements.txt"
+
+if ! test_python_modules paho.mqtt.client serial; then
+    warn "paho-mqtt/pyserial ausentes ou quebrados, instalando requirements da bridge"
+
+    if ! "$PYTHON_BIN" -m pip install -r "$BRIDGE_DIR/requirements.txt"; then
+        err "pip install falhou (bridge)"
+        exit 1
+    fi
 else
     ok "paho-mqtt + pyserial presentes"
 fi
 
-# ─── Mosquitto :1883 ──────────────────────────────────────────────────────
+# --- Mosquitto :1883 ------------------------------------------------------
 step "Verificando broker Mosquitto em ${MQTT_BROKER}:${MQTT_PORT}"
-mqtt_ok=0
-if has nc; then
-    if nc -z -w 2 "$MQTT_BROKER" "$MQTT_PORT" 2>/dev/null; then mqtt_ok=1; fi
-else
-    # Fallback puro bash via /dev/tcp
-    if (echo > "/dev/tcp/${MQTT_BROKER}/${MQTT_PORT}") 2>/dev/null; then mqtt_ok=1; fi
-fi
-if [[ $mqtt_ok -eq 1 ]]; then
+
+if test_tcp_port "$MQTT_BROKER" "$MQTT_PORT"; then
     ok "Mosquitto respondendo"
 else
-    warn "Mosquitto nao responde em ${MQTT_BROKER}:${MQTT_PORT} — server vai logar erro de conexao MQTT ate o broker subir"
+    warn "Mosquitto nao responde em ${MQTT_BROKER}:${MQTT_PORT} - server vai logar erro de conexao MQTT ate o broker subir"
 fi
 
-# ─── Spawn processos filhos ───────────────────────────────────────────────
+# --- Spawn processos filhos -----------------------------------------------
 # Bridge fica em background; npm run dev roda em FOREGROUND pra logs do
 # server+web aparecerem direto no console e Ctrl+C ser tratado nativamente.
 
 BRIDGE_PID=""
+CLEANED_UP=0
 
 cleanup() {
+    local exit_code=$?
+
+    if [[ "$CLEANED_UP" -eq 1 ]]; then
+        return "$exit_code"
+    fi
+    CLEANED_UP=1
+
     if [[ -n "$BRIDGE_PID" ]] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
         echo ""
         step "Derrubando bridge serial"
-        pkill -P "$BRIDGE_PID" 2>/dev/null || true
+
+        if has pkill; then
+            pkill -P "$BRIDGE_PID" 2>/dev/null || true
+        fi
+
         kill "$BRIDGE_PID" 2>/dev/null || true
+        wait "$BRIDGE_PID" 2>/dev/null || true
+
         ok "bridge (PID $BRIDGE_PID) derrubado"
     fi
-}
-trap cleanup INT TERM EXIT
 
-if [[ $NO_BRIDGE -eq 1 ]]; then
+    return "$exit_code"
+}
+
+trap cleanup EXIT INT TERM
+
+if [[ "$NO_BRIDGE" -eq 1 ]]; then
     warn "--no-bridge passado, pulando bridge serial (use simulador via /api/simular/iniciar ou ESP32 direto)"
 elif [[ -n "$COM_PORT" ]]; then
     step "Subindo bridge serial em $COM_PORT -> $MQTT_BROKER"
-    ( cd "$BRIDGE_DIR" && "$PYTHON_BIN" bridge.py --port "$COM_PORT" --broker "$MQTT_BROKER" ) &
+
+    (
+        cd "$BRIDGE_DIR"
+        "$PYTHON_BIN" bridge.py --port "$COM_PORT" --broker "$MQTT_BROKER"
+    ) &
+
     BRIDGE_PID=$!
     ok "bridge PID $BRIDGE_PID em $COM_PORT"
 else
-    warn "COM_PORT nao setado, pulando bridge serial (setar via COM_PORT=/dev/ttyUSB0 ou --com-port=...)"
+    warn "COM_PORT nao setado, pulando bridge serial (setar via COM_PORT=/dev/ttyUSB0 ou --com-port /dev/ttyUSB0)"
 fi
 
 step "Subindo server (:3001) + dashboard (:5173)"
 echo ""
-echo -e "${C_GREEN}Stack rodando. Abra http://localhost:5173 - Ctrl+C derruba tudo.${C_OFF}"
+printf "%bStack rodando. Abra http://localhost:5173 - Ctrl+C derruba tudo.%b\n" "$C_GREEN" "$C_OFF"
 echo ""
 
 # Foreground: output do concurrently (server + web) sai direto pro console.

@@ -34,6 +34,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $supervisionDir  = Join-Path $repoRoot "supervision"
 $intelligenceDir = Join-Path $supervisionDir "apps/intelligence"
@@ -48,64 +49,151 @@ function Test-Command($name) {
     return [bool](Get-Command $name -ErrorAction SilentlyContinue)
 }
 
+function Test-PythonModules {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Modules
+    )
+
+    $oldErrorActionPreference = $ErrorActionPreference
+
+    $hasNativePreference = Test-Path Variable:\PSNativeCommandUseErrorActionPreference
+    if ($hasNativePreference) {
+        $oldNativePreference = $PSNativeCommandUseErrorActionPreference
+    }
+
+    $code = @'
+import importlib
+import sys
+
+for module in sys.argv[1:]:
+    try:
+        importlib.import_module(module)
+    except Exception:
+        sys.exit(1)
+
+sys.exit(0)
+'@
+
+    try {
+        # Import ausente/quebrado deve retornar falso, nao derrubar o script.
+        $ErrorActionPreference = "Continue"
+
+        # PowerShell 7+ pode transformar exit code != 0 de comandos nativos
+        # em erro terminante quando esta preferencia esta ativa.
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+
+        & $pythonBin -c $code @Modules *> $null
+
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $oldNativePreference
+        }
+    }
+}
+
 # --- Pre-requisitos basicos -----------------------------------------------
 Write-Step "Verificando ferramentas base"
 
-if (-not (Test-Command node)) { Write-Err2 "Node nao encontrado no PATH"; exit 1 }
+if (-not (Test-Command node)) {
+    Write-Err2 "Node nao encontrado no PATH"
+    exit 1
+}
 Write-Ok ("node {0}" -f (& node --version))
 
-if (-not (Test-Command npm))  { Write-Err2 "npm nao encontrado no PATH"; exit 1 }
+if (-not (Test-Command npm)) {
+    Write-Err2 "npm nao encontrado no PATH"
+    exit 1
+}
 Write-Ok ("npm {0}" -f (& npm --version))
 
 $pythonBin = $null
 foreach ($candidate in @("python", "python3", "py")) {
-    if (Test-Command $candidate) { $pythonBin = $candidate; break }
+    if (Test-Command $candidate) {
+        $pythonBin = $candidate
+        break
+    }
 }
-if (-not $pythonBin) { Write-Err2 "Python nao encontrado no PATH"; exit 1 }
+
+if (-not $pythonBin) {
+    Write-Err2 "Python nao encontrado no PATH"
+    exit 1
+}
 Write-Ok ("python ({0}) {1}" -f $pythonBin, (& $pythonBin --version 2>&1))
 
 # --- Dependencias npm (workspaces supervision) ----------------------------
 Write-Step "Verificando dependencias npm em supervision/"
+
 $nodeModules = Join-Path $supervisionDir "node_modules"
+
 if (-not (Test-Path $nodeModules)) {
     Write-Warn2 "node_modules ausente, rodando npm install (pode demorar)"
+
     Push-Location $supervisionDir
-    try { & npm install } finally { Pop-Location }
-    if ($LASTEXITCODE -ne 0) { Write-Err2 "npm install falhou"; exit 1 }
+    try {
+        & npm install
+    } finally {
+        Pop-Location
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err2 "npm install falhou"
+        exit 1
+    }
 } else {
     Write-Ok "node_modules presente"
 }
 
 # --- Dependencias Python: intelligence ------------------------------------
 Write-Step "Verificando dependencias Python do motor fuzzy"
+
 $intelReq = Join-Path $intelligenceDir "requirements.txt"
-& $pythonBin -c "import numpy" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Warn2 "numpy ausente, instalando requirements de intelligence"
+
+if (-not (Test-PythonModules @("numpy"))) {
+    Write-Warn2 "numpy ausente ou quebrado, instalando requirements de intelligence"
+
     & $pythonBin -m pip install -r $intelReq
-    if ($LASTEXITCODE -ne 0) { Write-Err2 "pip install falhou (intelligence)"; exit 1 }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err2 "pip install falhou (intelligence)"
+        exit 1
+    }
 } else {
     Write-Ok "numpy presente"
 }
 
 # --- Dependencias Python: bridge ------------------------------------------
 Write-Step "Verificando dependencias Python da ponte serial"
+
 $bridgeReq = Join-Path $bridgeDir "requirements.txt"
-& $pythonBin -c "import paho.mqtt.client, serial" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Warn2 "paho-mqtt/pyserial ausentes, instalando requirements da bridge"
+
+if (-not (Test-PythonModules @("paho.mqtt.client", "serial"))) {
+    Write-Warn2 "paho-mqtt/pyserial ausentes ou quebrados, instalando requirements da bridge"
+
     & $pythonBin -m pip install -r $bridgeReq
-    if ($LASTEXITCODE -ne 0) { Write-Err2 "pip install falhou (bridge)"; exit 1 }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err2 "pip install falhou (bridge)"
+        exit 1
+    }
 } else {
     Write-Ok "paho-mqtt + pyserial presentes"
 }
 
 # --- Mosquitto :1883 ------------------------------------------------------
 Write-Step "Verificando broker Mosquitto em ${MqttBroker}:${MqttPort}"
+
 $tcp = New-Object System.Net.Sockets.TcpClient
+
 try {
     $iar = $tcp.BeginConnect($MqttBroker, $MqttPort, $null, $null)
     $ready = $iar.AsyncWaitHandle.WaitOne(2000)
+
     if ($ready -and $tcp.Connected) {
         $tcp.EndConnect($iar) | Out-Null
         Write-Ok "Mosquitto respondendo"
@@ -129,10 +217,13 @@ if ($NoBridge) {
     Write-Warn2 "-NoBridge passado, pulando bridge serial (use simulador via /api/simular/iniciar ou ESP32 direto)"
 } elseif ($ComPort) {
     Write-Step "Subindo bridge serial em $ComPort -> $MqttBroker"
+
     $bridgeProc = Start-Process -FilePath $pythonBin `
         -ArgumentList @("bridge.py", "--port", $ComPort, "--broker", $MqttBroker) `
         -WorkingDirectory $bridgeDir `
-        -NoNewWindow -PassThru
+        -NoNewWindow `
+        -PassThru
+
     Write-Ok ("bridge PID {0} em {1}" -f $bridgeProc.Id, $ComPort)
 } else {
     Write-Warn2 "COM_PORT vazio, pulando bridge serial"
@@ -145,6 +236,7 @@ Write-Host ""
 
 try {
     Push-Location $supervisionDir
+
     try {
         # Foreground: output do concurrently (server + web) sai direto pro console.
         # Ctrl+C aqui interrompe o npm e cai no finally externo pra cleanup.
@@ -156,11 +248,16 @@ try {
     if ($bridgeProc -and -not $bridgeProc.HasExited) {
         Write-Host ""
         Write-Step "Derrubando bridge serial"
+
         try {
-            # Mata netos primeiro (python -> subprocess) e depois o pai
+            # Mata netos primeiro (python -> subprocess) e depois o pai.
             Get-CimInstance Win32_Process -Filter "ParentProcessId=$($bridgeProc.Id)" -ErrorAction SilentlyContinue |
-                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+                ForEach-Object {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+
             Stop-Process -Id $bridgeProc.Id -Force -ErrorAction SilentlyContinue
+
             Write-Ok ("bridge (PID {0}) derrubado" -f $bridgeProc.Id)
         } catch {
             Write-Warn2 ("Falha ao derrubar bridge: {0}" -f $_.Exception.Message)
