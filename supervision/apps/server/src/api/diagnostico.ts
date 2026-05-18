@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import { store } from "../db/store";
 
@@ -7,6 +7,66 @@ const router = Router();
 
 const PYTHON_SCRIPT = path.resolve(__dirname, "../../../intelligence/main.py");
 const PYTHON_BIN = process.platform === "win32" ? "python" : "python3";
+
+// === Processo Python persistente (daemon) ===
+// Spawna uma vez, reutiliza em todos os ciclos. Elimina ~150ms de startup/ciclo.
+
+type Resolver = { resolve: (s: string) => void; reject: (e: Error) => void };
+
+let pyProc: ChildProcess | null = null;
+let stdoutBuf = "";
+const pending: Resolver[] = [];
+
+function spawnPy(): void {
+  const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+  });
+
+  proc.stdout!.on("data", (chunk: Buffer) => {
+    stdoutBuf += chunk.toString();
+    const lines = stdoutBuf.split("\n");
+    stdoutBuf = lines.pop()!;
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      pending.shift()?.resolve(line);
+    }
+  });
+
+  proc.stderr!.on("data", (data: Buffer) => {
+    console.error("[intelligence]", data.toString().trimEnd());
+  });
+
+  proc.on("exit", (code) => {
+    console.warn(`[intelligence] processo encerrou (código ${code}), reiniciando em 1s...`);
+    pyProc = null;
+    const err = new Error(`Processo Python encerrou (código ${code})`);
+    for (const r of pending.splice(0)) r.reject(err);
+    setTimeout(spawnPy, 1000);
+  });
+
+  pyProc = proc;
+  console.log("[intelligence] processo Python iniciado");
+}
+
+function callPy(input: Record<string, number | null | undefined>): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    if (!pyProc || pyProc.stdin!.destroyed) {
+      reject(new Error("Processo Python não disponível"));
+      return;
+    }
+    pending.push({
+      resolve: (line) => {
+        try { resolve(JSON.parse(line)); }
+        catch { reject(new Error(`Resposta inválida do diagnóstico: ${line}`)); }
+      },
+      reject,
+    });
+    pyProc.stdin!.write(JSON.stringify(input) + "\n");
+  });
+}
+
+spawnPy();
 
 const MAPA: Record<string, string> = {
   "transformador/nucleo/temperatura": "temperatura",
@@ -349,74 +409,41 @@ export function executarDiagnostico(): Promise<unknown> {
       temp_acelerando: tempAcelerando ? 1 : 0,
     };
 
-    const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {
-      stdio: ["pipe", "pipe", "pipe"],
-      // Garante UTF-8 no stdout do Python (Windows usa cp1252 por default em
-      // pipes nao-TTY, o que quebra caracteres como Δ e acentos das mensagens).
-      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-    });
+    callPy(inputData).then((resultado: unknown) => {
+      const r = resultado as Record<string, unknown>;
+      r.vida_residual = vidaResidual;
+      r.tendencias = tendencias;
+      r.predicoes = predicoes;
+      r.baseline = baselines;
 
-    let stdout = "";
-    let stderr = "";
+      // Detector ΔT × carga — adiciona diagnóstico custom + alarme throttled
+      const deltaTAtual = leituras.delta_t ?? 0;
+      const eficienciaDiag = detectarEficienciaAnomala(deltaTAtual, tendencias);
+      if (eficienciaDiag) {
+        if (!Array.isArray(r.diagnosticos)) r.diagnosticos = [];
+        (r.diagnosticos as unknown[]).push(eficienciaDiag);
 
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Diagnóstico falhou (código ${code}): ${stderr}`));
-        return;
-      }
-      try {
-        const resultado = JSON.parse(stdout);
-        resultado.vida_residual = vidaResidual;
-        resultado.tendencias = tendencias;
-        resultado.predicoes = predicoes;
-        resultado.baseline = baselines;
-
-        // Detector ΔT × carga — adiciona diagnóstico custom + alarme throttled
-        const deltaTAtual = leituras.delta_t ?? 0;
-        const eficienciaDiag = detectarEficienciaAnomala(deltaTAtual, tendencias);
-        if (eficienciaDiag) {
-          if (!Array.isArray(resultado.diagnosticos)) resultado.diagnosticos = [];
-          resultado.diagnosticos.push(eficienciaDiag);
-
-          if (!Array.isArray(resultado.grandezas_criticas)) resultado.grandezas_criticas = [];
-          if (!resultado.grandezas_criticas.includes("delta_t")) {
-            resultado.grandezas_criticas.push("delta_t");
-          }
-          if (resultado.severidade_geral === "ok") resultado.severidade_geral = "aviso";
-
-          const agoraMs = Date.now();
-          if (agoraMs - ultimoAlarmeEficienciaMs > THROTTLE_EFICIENCIA_MS) {
-            ultimoAlarmeEficienciaMs = agoraMs;
-            store.pushAlarme({
-              ts: Math.floor(agoraMs / 1000),
-              tipo: "eficiencia",
-              sev: "aviso",
-              valor: deltaTAtual,
-              limite: LIMIARES.delta_t.aviso,
-            });
-          }
+        if (!Array.isArray(r.grandezas_criticas)) r.grandezas_criticas = [];
+        if (!(r.grandezas_criticas as string[]).includes("delta_t")) {
+          (r.grandezas_criticas as string[]).push("delta_t");
         }
+        if (r.severidade_geral === "ok") r.severidade_geral = "aviso";
 
-        resolve(resultado);
-      } catch {
-        reject(new Error(`Resposta inválida do diagnóstico: ${stdout}`));
+        const agoraMs = Date.now();
+        if (agoraMs - ultimoAlarmeEficienciaMs > THROTTLE_EFICIENCIA_MS) {
+          ultimoAlarmeEficienciaMs = agoraMs;
+          store.pushAlarme({
+            ts: Math.floor(agoraMs / 1000),
+            tipo: "eficiencia",
+            sev: "aviso",
+            valor: deltaTAtual,
+            limite: LIMIARES.delta_t.aviso,
+          });
+        }
       }
-    });
 
-    proc.on("error", (err) => {
-      reject(new Error(`Erro ao executar diagnóstico: ${err.message}`));
-    });
-
-    proc.stdin.write(JSON.stringify(inputData));
-    proc.stdin.end();
+      resolve(r);
+    }).catch(reject);
   });
 }
 

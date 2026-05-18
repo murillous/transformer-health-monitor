@@ -681,15 +681,17 @@ def analisar(inputs):
 
 
 def main():
-    try:
-        raw = sys.stdin.read()
-        inputs = json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(json.dumps({"erro": f"JSON inválido: {e}"}))
-        sys.exit(1)
-
-    resultado = analisar(inputs)
-    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            inputs = json.loads(line)
+        except json.JSONDecodeError as e:
+            print(json.dumps({"erro": f"JSON inválido: {e}"}), flush=True)
+            continue
+        resultado = analisar(inputs)
+        print(json.dumps(resultado, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
