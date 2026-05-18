@@ -3,8 +3,11 @@ dist/
 .turbo/
 *.log
 .env
+
 __pycache__/
 *.pyc
+
+# Dados de runtime gerados pelo server (qualquer profundidade)
 **/data/*.db
 **/data/*.db-shm
 **/data/*.db-wal

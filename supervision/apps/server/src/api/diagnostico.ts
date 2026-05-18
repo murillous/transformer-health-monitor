@@ -6,6 +6,7 @@ import { store } from "../db/store";
 const router = Router();
 
 const PYTHON_SCRIPT = path.resolve(__dirname, "../../../intelligence/main.py");
+const PYTHON_BIN = process.platform === "win32" ? "python" : "python3";
 
 const MAPA: Record<string, string> = {
   "transformador/nucleo/temperatura": "temperatura",
@@ -14,6 +15,7 @@ const MAPA: Record<string, string> = {
   "transformador/vibracao/fft_240hz": "vibracao_240hz",
   "transformador/primario/corrente": "corrente_primario",
   "transformador/secundario/corrente": "corrente_secundario",
+  "transformador/primario/inrush": "inrush",
 };
 
 function mapTopico(topico: string): string {
@@ -36,6 +38,50 @@ const histVib240: { ts: number; valor: number }[] = [];
 
 let vidaConsumida = 0;
 let ultimoTsVida = 0;
+
+// Throttle do alarme de eficiência — evita flood
+let ultimoAlarmeEficienciaMs = 0;
+const THROTTLE_EFICIENCIA_MS = 60_000;
+
+interface DiagnosticoCustom {
+  tipo: string;
+  severidade: string;
+  titulo: string;
+  mensagem: string;
+  recomendacao: string;
+  grandeza: string;
+  valor_atual: number | null;
+}
+
+// Detecta ΔT subindo sem aumento proporcional de carga (perdas no núcleo,
+// conexões, refrigeração comprometida). Retorna diagnóstico custom ou null.
+function detectarEficienciaAnomala(
+  deltaTAtual: number,
+  tendencias: ReturnType<typeof calcTendencias>
+): DiagnosticoCustom | null {
+  const tDeltaT = tendencias.find((t) => t.grandeza === "delta_t");
+  const tCorrS = tendencias.find((t) => t.grandeza === "corrente_secundario");
+  if (!tDeltaT || !tCorrS) return null;
+
+  const subindoDeltaT = tDeltaT.inclinacao > 1.0;
+  const cargaEstavel = Math.abs(tCorrS.inclinacao) < 1.0;
+  const deltaTRelevante = deltaTAtual > LIMIARES.delta_t.aviso;
+
+  if (!(subindoDeltaT && cargaEstavel && deltaTRelevante)) return null;
+
+  return {
+    tipo: "eficiencia_anomala",
+    severidade: "aviso",
+    titulo: "Anomalia de Eficiência",
+    mensagem:
+      "ΔT subindo sem aumento proporcional de carga — possível perda no núcleo, conexões frouxas ou refrigeração comprometida.",
+    recomendacao:
+      "Inspecionar conexões/aperto das chapas do núcleo, verificar fluxo de óleo/ar de refrigeração e analisar perdas a vazio.",
+    grandeza: "delta_t",
+    valor_atual: deltaTAtual,
+  };
+}
+
 const TEMP_REF = 80;
 
 function agingRate(tempC: number): number {
@@ -290,6 +336,9 @@ export function executarDiagnostico(): Promise<unknown> {
       vibracao_240hz: v240 || null,
       corrente_primario: leituras["corrente_primario"] ?? null,
       corrente_secundario: leituras["corrente_secundario"] ?? null,
+      // Inrush e evento discreto. Quando nao ha pico recente, leitura nao
+      // aparece nos ultimos 15s -> Python recebe null -> default 0 -> "ausente".
+      inrush: leituras["inrush"] ?? null,
       correlacao_cv: correlacao_cv > 0 ? correlacao_cv : null,
       vida_consumida: vidaConsumida > 0 ? vidaConsumida : null,
       harmonic_ratio: harmonicRatio > 0 ? harmonicRatio : null,
@@ -300,8 +349,11 @@ export function executarDiagnostico(): Promise<unknown> {
       temp_acelerando: tempAcelerando ? 1 : 0,
     };
 
-    const proc = spawn("python3", [PYTHON_SCRIPT], {
+    const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {
       stdio: ["pipe", "pipe", "pipe"],
+      // Garante UTF-8 no stdout do Python (Windows usa cp1252 por default em
+      // pipes nao-TTY, o que quebra caracteres como Δ e acentos das mensagens).
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
 
     let stdout = "";
@@ -326,6 +378,33 @@ export function executarDiagnostico(): Promise<unknown> {
         resultado.tendencias = tendencias;
         resultado.predicoes = predicoes;
         resultado.baseline = baselines;
+
+        // Detector ΔT × carga — adiciona diagnóstico custom + alarme throttled
+        const deltaTAtual = leituras.delta_t ?? 0;
+        const eficienciaDiag = detectarEficienciaAnomala(deltaTAtual, tendencias);
+        if (eficienciaDiag) {
+          if (!Array.isArray(resultado.diagnosticos)) resultado.diagnosticos = [];
+          resultado.diagnosticos.push(eficienciaDiag);
+
+          if (!Array.isArray(resultado.grandezas_criticas)) resultado.grandezas_criticas = [];
+          if (!resultado.grandezas_criticas.includes("delta_t")) {
+            resultado.grandezas_criticas.push("delta_t");
+          }
+          if (resultado.severidade_geral === "ok") resultado.severidade_geral = "aviso";
+
+          const agoraMs = Date.now();
+          if (agoraMs - ultimoAlarmeEficienciaMs > THROTTLE_EFICIENCIA_MS) {
+            ultimoAlarmeEficienciaMs = agoraMs;
+            store.pushAlarme({
+              ts: Math.floor(agoraMs / 1000),
+              tipo: "eficiencia",
+              sev: "aviso",
+              valor: deltaTAtual,
+              limite: LIMIARES.delta_t.aviso,
+            });
+          }
+        }
+
         resolve(resultado);
       } catch {
         reject(new Error(`Resposta inválida do diagnóstico: ${stdout}`));

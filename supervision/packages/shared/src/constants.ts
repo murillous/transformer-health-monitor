@@ -2,13 +2,18 @@ import type { Severidade } from "./types";
 
 export const TOPICOS_MQTT = {
   correntePrimario: "transformador/primario/corrente",
+  inrushPrimario: "transformador/primario/inrush",
   correnteSecundario: "transformador/secundario/corrente",
   temperaturaNucleo: "transformador/nucleo/temperatura",
   deltaT: "transformador/nucleo/delta_t",
+  vibracaoAceleracao: "transformador/vibracao/aceleracao",
   vibracao120hz: "transformador/vibracao/fft_120hz",
   vibracao240hz: "transformador/vibracao/fft_240hz",
+  vibracaoEspectro: "transformador/vibracao/espectro",
   alarme: "transformador/status/alarme",
   heartbeat: "transformador/status/heartbeat",
+  ondaPrimario: "onda_corrente_primario",
+  ondaSecundario: "onda_corrente_secundario",
 } as const;
 
 export const TOPICOS_INSCREVER = Object.values(TOPICOS_MQTT);
@@ -20,6 +25,8 @@ export const LIMITES: Record<string, { aviso: number; critico: number }> = {
   correntePrimario: { aviso: 4.0, critico: 6.0 },
   correnteSecundario: { aviso: 30, critico: 45 },
   vibracao240hz: { aviso: 0.1, critico: 0.25 },
+  vibracaoAceleracao: { aviso: 0.5, critico: 1.0 },
+  inrushPrimario: { aviso: 1.5, critico: 3.0 },
 };
 
 export function avaliarSeveridade(
@@ -41,6 +48,8 @@ export function mapearGrandeza(topico: string): string | null {
     [TOPICOS_MQTT.correntePrimario]: "correntePrimario",
     [TOPICOS_MQTT.correnteSecundario]: "correnteSecundario",
     [TOPICOS_MQTT.vibracao240hz]: "vibracao240hz",
+    [TOPICOS_MQTT.vibracaoAceleracao]: "vibracaoAceleracao",
+    [TOPICOS_MQTT.inrushPrimario]: "inrushPrimario",
   };
   return mapa[topico] ?? null;
 }

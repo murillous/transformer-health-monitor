@@ -27,8 +27,8 @@ export default function SpectrumChart({ dados }: Props) {
               axisLine={false}
               tickMargin={8}
               type="number"
-              domain={[0, 600]}
-              ticks={[60, 120, 180, 240, 300, 360, 420, 480, 540, 600]}
+              domain={[0, 720]}
+              ticks={[120, 240, 360, 480, 600]}
             />
             <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, "auto"]} />
             <ChartTooltip
@@ -44,6 +44,9 @@ export default function SpectrumChart({ dados }: Props) {
             />
             <ReferenceLine x={120} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5} />
             <ReferenceLine x={240} stroke="#8b5cf6" strokeDasharray="4 4" strokeWidth={1.5} />
+            <ReferenceLine x={360} stroke="#3b82f6" strokeDasharray="4 4" strokeWidth={1} />
+            <ReferenceLine x={480} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1} />
+            <ReferenceLine x={600} stroke="#f59e0b" strokeDasharray="4 4" strokeWidth={1} />
             <Bar
               dataKey="amplitude"
               fill="var(--color-amplitude)"

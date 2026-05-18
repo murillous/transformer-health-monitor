@@ -6,8 +6,25 @@ import {
   mapearGrandeza,
   LIMITES,
 } from "@transformer-monitor/shared";
+import { executarDiagnostico } from "./diagnostico";
 
 const router = Router();
+
+interface DiagnosticoFuzzy {
+  diagnosticos?: Array<{
+    tipo: string;
+    severidade: string;
+    titulo: string;
+    mensagem: string;
+    recomendacao: string;
+    grandeza: string;
+    valor_atual: number | null;
+  }>;
+  severidade_geral?: string;
+  risco_operacional?: { score: number; nivel: string };
+  urgencia_intervencao?: { score: number; nivel: string };
+  vida_residual?: { consumido: number; taxa_atual: number } | null;
+}
 
 const LABELS: Record<string, string> = {
   "transformador/nucleo/temperatura": "Temperatura do Núcleo",
@@ -154,7 +171,7 @@ function gerarEspectro(
   });
 }
 
-function gerarHTML(inicio: string, fim: string): string {
+function gerarHTML(inicio: string, fim: string, diagnostico: DiagnosticoFuzzy | null): string {
   const inicioDate = new Date(inicio);
   const fimDate = new Date(fim);
   const registros = store.registrosPorPeriodo(inicioDate, fimDate);
@@ -419,6 +436,15 @@ function gerarHTML(inicio: string, fim: string): string {
   .chart-box { text-align: center; margin: 8px 0; }
   .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #d1d5db; font-size: 8px; color: #9ca3af; text-align: center; }
   .page-break { page-break-before: always; }
+  .reco { border-left: 4px solid #9ca3af; padding: 8px 12px; margin: 6px 0; background: #f9fafb; border-radius: 0 4px 4px 0; }
+  .reco.critico { border-left-color: #ef4444; background: #fef2f2; }
+  .reco.aviso { border-left-color: #f59e0b; background: #fffbeb; }
+  .reco h4 { font-size: 10px; margin-bottom: 4px; color: #1f2937; }
+  .reco h4 .tag { display: inline-block; padding: 1px 6px; font-size: 8px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .reco.critico h4 .tag { background: #ef4444; color: #fff; }
+  .reco.aviso h4 .tag { background: #f59e0b; color: #fff; }
+  .reco p { font-size: 9px; margin: 2px 0; color: #374151; }
+  .reco p strong { color: #111827; }
 </style></head><body>
   <div class="header">
     <div>
@@ -456,8 +482,27 @@ function gerarHTML(inicio: string, fim: string): string {
 
   <h2>Diagnóstico</h2>
   ${linhasDiagnostico
-    ? `<table><thead><tr><th>Grandeza</th><th>Valor Médio</th><th>Severidade</th><th>Recomendação</th></tr></thead><tbody>${linhasDiagnostico}</tbody></table>`
+    ? `<table><thead><tr><th>Grandeza</th><th>Valor Médio</th><th>Severidade</th><th>Limite Ultrapassado</th></tr></thead><tbody>${linhasDiagnostico}</tbody></table>`
     : '<p style="color:#6b7280;font-style:italic">Todos os parâmetros dentro da normalidade. Nenhuma ação necessária.</p>'}
+
+  <h2>Recomendações Técnicas (Motor Fuzzy)</h2>
+  ${diagnostico && Array.isArray(diagnostico.diagnosticos) && diagnostico.diagnosticos.length > 0
+    ? diagnostico.diagnosticos
+        .map((d) => {
+          const sevClass = d.severidade === "critico" ? "critico" : d.severidade === "aviso" ? "aviso" : "";
+          const sevLabel = d.severidade === "critico" ? "CRÍTICO" : d.severidade === "aviso" ? "ATENÇÃO" : "INFO";
+          return `<div class="reco ${sevClass}">
+        <h4>${d.titulo}<span class="tag">${sevLabel}</span></h4>
+        <p><strong>Diagnóstico:</strong> ${d.mensagem}</p>
+        <p><strong>Recomendação:</strong> ${d.recomendacao}</p>
+      </div>`;
+        })
+        .join("\n      ")
+    : '<p style="color:#6b7280;font-style:italic">Nenhuma anomalia detectada pelo motor fuzzy. Operação dentro dos parâmetros normais.</p>'}
+
+  ${diagnostico?.risco_operacional
+    ? `<p style="margin-top:10px;font-size:9px;color:#374151"><strong>Risco Operacional:</strong> ${diagnostico.risco_operacional.score.toFixed(1)} (${diagnostico.risco_operacional.nivel}) &nbsp;|&nbsp; <strong>Urgência:</strong> ${diagnostico.urgencia_intervencao?.nivel ?? "-"} &nbsp;|&nbsp; <strong>Vida Consumida:</strong> ${diagnostico.vida_residual?.consumido ?? 0}%</p>`
+    : ""}
 
   <div class="footer">
     <p>Transformer Health Monitor — Projeto Integrador Microcontroladores 2026</p>
@@ -473,7 +518,14 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Parâmetros 'inicio' e 'fim' são obrigatórios" });
     }
 
-    const html = gerarHTML(inicio, fim);
+    let diagnostico: DiagnosticoFuzzy | null = null;
+    try {
+      diagnostico = (await executarDiagnostico()) as DiagnosticoFuzzy;
+    } catch (err) {
+      console.warn("Diagnóstico fuzzy indisponível, gerando relatório sem recomendações:", err);
+    }
+
+    const html = gerarHTML(inicio, fim, diagnostico);
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     await page.setContent(html);

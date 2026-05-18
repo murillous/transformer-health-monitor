@@ -1,64 +1,15 @@
-# Transformer Health Monitor — Sistema de Supervisão
+# supervision/
 
-Sistema de monitoramento contínuo de transformadores de potência com sensores embarcados, dashboard web em tempo real, diagnóstico inteligente (fuzzy), geração de relatórios PDF e datalogging contínuo.
+Monorepo TypeScript + Python da stack de supervisão.
 
-## Arquitetura
+A documentação completa (arquitetura, API, WebSocket, diagnóstico fuzzy) está em **[`../docs/06-supervision.md`](../docs/06-supervision.md)**.
 
-```
-supervision/
-├── apps/intelligence/          # Módulo de Inteligência (Python + NumPy)
-│   ├── fuzzy_engine.py          # Motor de inferência fuzzy Mamdani com centróide
-│   ├── main.py                  # 17+ regras fuzzy para diagnóstico de transformadores
-│   └── requirements.txt
-├── apps/server/                # Backend TypeScript/Express (:3001)
-│   └── src/
-│       ├── api/
-│       │   ├── simular.ts       # Gerador sintético de sensores + waveforms 200ms
-│       │   ├── diagnostico.ts   # Correlação CV, Arrhenius, trends → subprocess Python
-│       │   ├── historico.ts     # GET /api/historico e /api/historico/alarmes
-│       │   └── relatorio.ts     # POST /api/relatorio (PDF com Puppeteer)
-│       ├── db/
-│       │   ├── database.ts      # SQLite WAL + CRUD + consulta paginada
-│       │   ├── csv_logger.ts    # Append contínuo em data/datalog_*.csv
-│       │   └── store.ts         # Interface delegando para database.ts + csv_logger.ts
-│       ├── ws/hub.ts            # WebSocket Hub (broadcast em tempo real)
-│       └── main.ts              # Express entrypoint
-└── apps/web/                   # Frontend React + Vite (:5173)
-    └── src/
-        ├── components/
-        │   ├── Chart.tsx              # Gráfico de tendências (Recharts + shadcn)
-        │   ├── SpectrumChart.tsx      # Espectro FFT com bins 60-600Hz
-        │   ├── WaveformChart.tsx      # Formas de onda (osciloscópio)
-        │   ├── MetricCard.tsx         # Card com border-l-4 por severidade
-        │   ├── DiagnosticoPanel.tsx   # Painel completo de diagnóstico
-        │   ├── DiagnosticoResumo.tsx  # Card resumo para o topo do dashboard
-        │   ├── AlertasResumo.tsx      # Card resumo de alarmes ativos
-        │   └── ThemeToggle.tsx        # Alternador claro/escuro
-        ├── hooks/
-        │   ├── useDashboard.ts   # Estado global, EMA smoothing, merge WS
-        │   ├── useWebSocket.ts   # Conexão WebSocket auto-reconnect
-        │   └── useTheme.ts       # Tema dark/light com localStorage
-        └── pages/
-            ├── Dashboard.tsx     # Painel de controle com tabs
-            ├── Alertas.tsx       # Histórico de alarmes paginado
-            └── Relatorio.tsx     # Geração de PDF
-```
-
-## Pré-requisitos
+## Quick start
 
 ```bash
+npm install
 pip install -r apps/intelligence/requirements.txt
-```
-
-## Como Rodar
-
-```bash
-# Dev (servidor + web simultaneamente)
 npm run dev
-
-# Individualmente:
-npm run dev:server   # :3001 (auto-restart com tsx watch)
-npm run dev:web      # :5173 (Vite HMR)
 ```
 
 ## Features

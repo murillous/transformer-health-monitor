@@ -30,6 +30,40 @@ void iniciar();
 void publicar(const char* topico, float valor, const char* unidade);
 
 /**
+ * @brief Publica um alarme estruturado no topico de status.
+ *
+ * @param tipo        Identificador do alarme.
+ * @param severidade  Nivel do alarme (warning, critical).
+ * @param valor       Valor que disparou o alarme.
+ * @param limite      Limite configurado.
+ * @param mensagem    Mensagem curta para a IHM.
+ */
+void publicarAlarme(const char* tipo, const char* severidade,
+                    float valor, float limite, const char* mensagem);
+
+/**
+ * @brief Publica espectro de FFT como array de pares {freq, amplitude}.
+ *
+ * @param topico       Topico MQTT de destino.
+ * @param freqs        Vetor de frequencias (Hz inteiros) a publicar.
+ * @param amplitudes   Vetor paralelo com a amplitude de cada frequencia.
+ * @param n_bins       Numero de pares (tamanho dos dois vetores).
+ */
+void publicarEspectro(const char* topico, const int* freqs,
+                      const float* amplitudes, uint16_t n_bins);
+
+/**
+ * @brief Publica burst de amostras (forma de onda) como JSON.
+ *
+ * Payload: {"ts":...,"amostras":[a0,a1,...,a_{n-1}]}.
+ *
+ * @param topico    Topico MQTT.
+ * @param amostras  Vetor de amostras (em volts ja com bias removido).
+ * @param n         Numero de amostras.
+ */
+void publicarOnda(const char* topico, const float* amostras, uint16_t n);
+
+/**
  * @brief Mantém a conexão MQTT viva (só no ESP32).
  *
  * Deve ser chamada no loop() para reconexões automáticas.
