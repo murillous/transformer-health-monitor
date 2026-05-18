@@ -321,7 +321,7 @@ Checklist antes de abrir PR:
 | `docs/05-pegadinhas-proteus.md` | Comportamentos não-óbvios do Proteus e workarounds |
 | `docs/ROADMAP.md` | Status do projeto e o que falta — fonte da verdade |
 | `docs/Diagnostico_transformador.pdf` | Documento técnico formal para a avaliação |
-| `supervision/README.md` | Detalhes da stack de supervisão (server + web + intelligence) |
+| `docs/06-supervision.md` | Detalhes da stack de supervisão (server + web + intelligence) |
 | `tools/serial_bridge/bridge.py` | Ponte Serial Proteus → MQTT (lê COMPIM, publica no broker) |
 
 ---

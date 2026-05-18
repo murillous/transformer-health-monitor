@@ -268,7 +268,7 @@ Imperativo, descrição curta, sem ponto final. Corpo opcional explicando o porq
 | Pegadinhas do Proteus | `docs/05-pegadinhas-proteus.md` |
 | Status atual e o que falta | `docs/ROADMAP.md` |
 | Contexto técnico profundo | `docs/Diagnostico_transformador.pdf` |
-| Detalhes da stack de supervisão | `supervision/README.md` |
+| Detalhes da stack de supervisão | `docs/06-supervision.md` |
 
 ---
 

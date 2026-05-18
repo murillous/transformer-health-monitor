@@ -1,6 +1,8 @@
-# Transformer Health Monitor — Sistema de Supervisão
+# 🖥️ Stack de Supervisão
 
 Sistema de monitoramento contínuo de transformadores de potência com sensores embarcados, dashboard web em tempo real, diagnóstico inteligente (fuzzy), geração de relatórios PDF e datalogging contínuo.
+
+> Código vive em [`../supervision/`](../supervision/). Este documento descreve a arquitetura e o uso do monorepo.
 
 ## Arquitetura
 
@@ -8,7 +10,7 @@ Sistema de monitoramento contínuo de transformadores de potência com sensores 
 supervision/
 ├── apps/intelligence/          # Módulo de Inteligência (Python + NumPy)
 │   ├── fuzzy_engine.py          # Motor de inferência fuzzy Mamdani com centróide
-│   ├── main.py                  # 17+ regras fuzzy para diagnóstico de transformadores
+│   ├── main.py                  # 32 regras fuzzy + 9 variáveis (incluindo inrush)
 │   └── requirements.txt
 ├── apps/server/                # Backend TypeScript/Express (:3001)
 │   └── src/
@@ -68,13 +70,28 @@ npm run dev:web             # :5173 (Vite HMR)
 npm run dev:server:offline  # equivale a MQTT_BROKER=none
 ```
 
+### Atalho — script único de boot
+
+```powershell
+# Windows (default COM_PORT=COM5)
+.\scripts\start.ps1
+.\scripts\start.ps1 -NoBridge        # sem bridge (simulador interno ou ESP32)
+```
+```bash
+# Linux/macOS
+COM_PORT=/dev/ttyUSB0 ./scripts/start.sh
+./scripts/start.sh --no-bridge
+```
+
+Verifica deps, instala o que falta, checa o broker, sobe bridge + server + web. Ctrl+C derruba tudo.
+
 ### Fluxo com firmware real
 
 Para receber dados reais (Proteus ou ESP32):
 
-1. Mosquitto rodando em `localhost:1883` (ver [`../docs/01-setup.md`](../docs/01-setup.md) e [`../docs/03-mqtt.md`](../docs/03-mqtt.md))
+1. Mosquitto rodando em `localhost:1883` (ver [`./01-setup.md`](./01-setup.md) e [`./03-mqtt.md`](./03-mqtt.md))
 2. No **Proteus**: COMPIM + com0com + `tools/serial_bridge/bridge.py` rodando
-3. No **ESP32**: credenciais WiFi configuradas em `src/publicador.cpp` e firmware gravado
+3. No **ESP32**: credenciais WiFi via env vars (`WIFI_SSID`, `WIFI_PASS`, `MQTT_BROKER`) lidas pelo `platformio.ini` como build flags
 4. `npm run dev` — o server loga `MQTT conectado em mqtt://localhost:1883` e o dashboard começa a atualizar
 
 O simulador interno (`/api/simular/iniciar`) continua disponível para trabalhar no UI sem firmware. Os dois caminhos não conflitam — a última mensagem (real ou sintética) vence por tópico.
@@ -118,14 +135,19 @@ Gera dados sintéticos realistas via POST `/api/simular/iniciar`:
 ### Diagnóstico Inteligente
 
 **Motor Fuzzy** (`apps/intelligence/`):
-- 6 variáveis de entrada: temperatura, ΔT, vibração 120Hz/240Hz, corrente primário/secundário
+- 7 variáveis de entrada: temperatura, ΔT, vibração 120Hz/240Hz, corrente primário/secundário, **inrush**
 - 2 variáveis avançadas: `correlacao_cv` (corrente × vibração), `vida_consumida` (Arrhenius)
 - Defuzzificação por centróide (NumPy)
-- 17+ regras Mamdani cobrindo falhas térmicas, mecânicas, elétricas e harmônicas
-- Executado via subprocess do Express a cada ciclo de aquisição
-- 14+ tipos de diagnóstico com severidade, mensagem e recomendação técnica
+- **32 regras Mamdani** cobrindo falhas térmicas, mecânicas, elétricas, harmônicas e inrush
+- Universos calibrados pra escala do projeto (g, A baixo) — não escala industrial
+- Executado via subprocess do Express a cada ciclo de aquisição (`PYTHONIOENCODING=utf-8` p/ caracteres como Δ)
+- 16+ tipos de diagnóstico com severidade, mensagem e recomendação técnica
+
+**Inrush Current** — Pico de corrente de magnetização durante energização. Variável fuzzy com termos `ausente`/`presente`/`severo` (0-10). Quando combinado com temperatura quente ou corrente alta, eleva risco a crítico.
 
 **Correlação Corrente × Vibração** — Detecta co-elevação de corrente primária e vibração 120Hz em janela de 20s. Quando ambos sobem simultaneamente, o fuzzy amplifica o risco e gera diagnóstico de estresse eletromecânico.
+
+**Eficiência Anômala** — Detector estatístico no server (`api/diagnostico.ts::detectarEficienciaAnomala`). Quando ΔT sobe (slope > 1.0°C/h) sem aumento proporcional de carga (slope corrente_S < 1.0A/h), gera diagnóstico custom `eficiencia_anomala` + alarme throttled 60s.
 
 **Vida Residual (Arrhenius)** — Acumulador in-memory baseado na regra dos 10°C: cada +10°C acima de 80°C dobra a taxa de envelhecimento do isolamento. Exibe % consumido e taxa atual de envelhecimento.
 
@@ -137,7 +159,7 @@ Gera dados sintéticos realistas via POST `/api/simular/iniciar`:
 - SVGs inline de temperatura, correntes, vibração, espectro FFT
 - Cabeçalho com status geral (OK/Atenção/Crítico)
 - Tabela de estatísticas (mín/méd/máx) por grandeza
-- Diagnóstico automático na última seção
+- **Seção "Recomendações Técnicas (Motor Fuzzy)"** — `relatorio.ts` chama `executarDiagnostico()` antes de renderizar; cada item lista título, mensagem e recomendação do diagnóstico fuzzy, com border-left colorida por severidade
 
 ### Persistência
 

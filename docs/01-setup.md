@@ -401,5 +401,5 @@ Ignorar — é o comportamento normal do barramento OneWire (DS18B20).
 - [`03-mqtt.md`](./03-mqtt.md) — tópicos, payloads, COMPIM, ponte, broker
 - [`04-padroes-codigo.md`](./04-padroes-codigo.md) — convenções da equipe
 - [`05-pegadinhas-proteus.md`](./05-pegadinhas-proteus.md) — comportamentos não-óbvios catalogados
+- [`06-supervision.md`](./06-supervision.md) — detalhes da stack de supervisão
 - [`ROADMAP.md`](./ROADMAP.md) — status atual e o que falta
-- [`../supervision/README.md`](../supervision/README.md) — detalhes da stack de supervisão
