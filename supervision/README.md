@@ -103,15 +103,23 @@ Gera dados sintéticos realistas via POST `/api/simular/iniciar`:
 - 6 variáveis de entrada: temperatura, ΔT, vibração 120Hz/240Hz, corrente primário/secundário
 - 2 variáveis avançadas: `correlacao_cv` (corrente × vibração), `vida_consumida` (Arrhenius)
 - Defuzzificação por centróide (NumPy)
-- 17+ regras Mamdani cobrindo falhas térmicas, mecânicas, elétricas e harmônicas
+- 20+ regras Mamdani cobrindo falhas térmicas, mecânicas, elétricas, harmônicas e combinatórias
 - Executado via subprocess do Express a cada ciclo de aquisição
-- 14+ tipos de diagnóstico com severidade, mensagem e recomendação técnica
+- 16+ tipos de diagnóstico com severidade, mensagem e recomendação técnica
 
 **Correlação Corrente × Vibração** — Detecta co-elevação de corrente primária e vibração 120Hz em janela de 20s. Quando ambos sobem simultaneamente, o fuzzy amplifica o risco e gera diagnóstico de estresse eletromecânico.
 
 **Vida Residual (Arrhenius)** — Acumulador in-memory baseado na regra dos 10°C: cada +10°C acima de 80°C dobra a taxa de envelhecimento do isolamento. Exibe % consumido e taxa atual de envelhecimento.
 
 **Tendência Preditiva** — Regressão linear nos últimos 30 pontos de temperatura e ΔT. Sempre visível no painel com setas direcionais (↑ estável ↓). Quando a inclinação é significativa (R² > 0.3) e o tempo estimado até o alarme é < 2h, exibe cards de predição com "alarme em ~Xmin".
+
+**Análise de Harmônicas (FFT indireta)** — Relação vib240/vib120 computada como indicador de distorção harmônica por carga não-linear. Quando a relação ultrapassa 1.5, o fuzzy gera diagnóstico de distorção harmônica. Útil para detectar conexão de cargas não-lineares (fontes chaveadas, inversores).
+
+**Thresholds Adaptativos (Z-Score)** — A cada ciclo, o servidor consulta os últimos 5 minutos de dados históricos no SQLite, calcula média e desvio padrão para cada grandeza. O Z-score (quantos σ acima/abaixo da média) é alimentado ao fuzzy como variável de entrada. Um Z-score > 3 dispara diagnóstico de anomalia adaptativa — detecta comportamentos anormais mesmo dentro dos limites absolutos.
+
+**Meta-Diagnóstico Combinatório** — Duas regras que combinam 3+ variáveis simultaneamente: (1) temperatura alta + vibração 120Hz + corrente elevada → falha multifatorial térmico-mecânica. (2) gradiente térmico alto + corrente elevada + vibração 120Hz → falha térmico-elétrica. Risco ≥ que a soma dos riscos individuais.
+
+**Taxa de Degradação (2ª Derivada)** — Além da inclinação (1ª derivada), a tendência agora mostra aceleração: divide o histórico ao meio e compara as inclinações de cada metade. Se a segunda metade sobe mais rápido, exibe ⚡acelerando — indicativo de degradação progressiva que exige intervenção antes que atinja o limite crítico.
 
 ### Relatório PDF
 

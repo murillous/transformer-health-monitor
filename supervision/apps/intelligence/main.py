@@ -139,6 +139,37 @@ def _built_system():
         .add_term("alta", RightEdge(0.6, 0.8))
     )
 
+    # --- Input: Harmonic Ratio vib240/vib120 (0-5) ---
+    harmonic_ratio = (
+        FuzzyVariable("harmonic_ratio", 0, 5)
+        .add_term("normal", LeftEdge(0.5, 1.0))
+        .add_term("elevado", Triangle(0.8, 1.5, 2.5))
+        .add_term("distorcao", RightEdge(2.0, 3.0))
+    )
+
+    # --- Input: Z-Score Temperature (0-5, |z| clamped) ---
+    z_temperatura = (
+        FuzzyVariable("z_temperatura", 0, 5)
+        .add_term("normal", LeftEdge(1, 2))
+        .add_term("alto", Triangle(1.5, 2.5, 3.5))
+        .add_term("critico", RightEdge(3, 4))
+    )
+
+    # --- Input: Z-Score Delta-T (0-5) ---
+    z_delta_t = (
+        FuzzyVariable("z_delta_t", 0, 5)
+        .add_term("normal", LeftEdge(1, 2))
+        .add_term("alto", Triangle(1.5, 2.5, 3.5))
+        .add_term("critico", RightEdge(3, 4))
+    )
+
+    # --- Input: Acceleration flag (0 or 1) ---
+    temp_acelerando = (
+        FuzzyVariable("temp_acelerando", 0, 1)
+        .add_term("nao", LeftEdge(0.3, 0.6))
+        .add_term("sim", RightEdge(0.4, 0.7))
+    )
+
     # --- Output: Operational Risk (0-100) ---
     risco = (
         FuzzyVariable("risco_operacional", 0, 100)
@@ -156,7 +187,7 @@ def _built_system():
         .add_term("alta", RightEdge(55, 75))
     )
 
-    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, correlacao_cv, vida_consumida, risco, urgencia]:
+    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, correlacao_cv, vida_consumida, harmonic_ratio, z_temperatura, z_delta_t, temp_acelerando, risco, urgencia]:
         fsis.add_variable(var)
 
     R = lambda a, c, w=1.0: fsis.add_rule(a, c, w)
@@ -205,6 +236,23 @@ def _built_system():
     # === Life consumption (Arrhenius) ===
     R([("vida_consumida", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
     R([("vida_consumida", "media"), ("temperatura", "quente")], [("risco_operacional", "moderado")], 0.6)
+
+    # === Harmonic distortion (vib240/vib120) ===
+    R([("harmonic_ratio", "distorcao"), ("vibracao_240hz", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+    R([("harmonic_ratio", "elevado"), ("vibracao_240hz", "moderada")], [("risco_operacional", "moderado")], 0.6)
+
+    # === Z-score: adaptive anomaly detection ===
+    R([("z_temperatura", "critico")], [("risco_operacional", "alto")], 0.8)
+    R([("z_temperatura", "alto"), ("z_delta_t", "alto")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.7)
+    R([("z_temperatura", "alto"), ("temperatura", "quente")], [("risco_operacional", "moderado")], 0.6)
+
+    # === Meta-diagnosis: 3+ variables ===
+    R([("temperatura", "quente"), ("vibracao_120hz", "moderada"), ("corrente_primario", "elevada")], [("risco_operacional", "alto"), ("urgencia_intervencao", "alta")], 0.9)
+    R([("delta_t", "alto"), ("corrente_primario", "alta"), ("vibracao_120hz", "moderada")], [("risco_operacional", "alto")], 0.8)
+
+    # === Temperature acceleration (2nd derivative) ===
+    R([("temp_acelerando", "sim"), ("temperatura", "quente")], [("risco_operacional", "alto"), ("urgencia_intervencao", "alta")], 0.9)
+    R([("temp_acelerando", "sim"), ("temperatura", "morna")], [("risco_operacional", "moderado")], 0.7)
 
     # === Normal operation ===
     R(
@@ -454,6 +502,76 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
             "valor_atual": pct,
         })
         grandezas_criticas.add("vida_util")
+
+    # Harmonic distortion (from vib240/vib120 ratio)
+    harmonic_ratio_val = inputs.get("harmonic_ratio", 0)
+    if harmonic_ratio_val > 1.5:
+        sev = "critico" if harmonic_ratio_val > 2.5 else "aviso"
+        diagnosticos.append({
+            "tipo": "distorcao_harmonica",
+            "severidade": sev,
+            "titulo": "Distorção Harmônica por Carga",
+            "mensagem": f"{'CRÍTICO' if sev == 'critico' else 'AVISO'}: Relação harmônica vib240/vib120 elevada ({harmonic_ratio_val}). Carga não-linear conectada ao transformador gerando distorção na forma de onda.",
+            "recomendacao": "Analisar qualidade de energia. Verificar presença de cargas não-lineares (fontes chaveadas, inversores). Considerar instalação de filtros harmônicos.",
+            "grandeza": "multivariavel",
+            "valor_atual": harmonic_ratio_val,
+        })
+        grandezas_criticas.add("distorcao_harmonica")
+
+    # Z-score anomaly (adaptive threshold exceeded)
+    z_temp = inputs.get("z_temperatura", 0)
+    if z_temp > 3:
+        diagnosticos.append({
+            "tipo": "anomalia_adaptativa",
+            "severidade": "critico",
+            "titulo": "Anomalia Térmica (Threshold Adaptativo)",
+            "mensagem": f"CRÍTICO: Temperatura {z_temp} desvios-padrão acima da média histórica recente. Comportamento anômalo detectado fora do regime normal do transformador.",
+            "recomendacao": "Investigar causa da elevação atípica. Comparar com carga atual e condições ambientais. Inspecionar sistema de refrigeração.",
+            "grandeza": "multivariavel",
+            "valor_atual": z_temp,
+        })
+        grandezas_criticas.add("anomalia_adaptativa")
+
+    # Meta-diagnosis: thermal + mechanical + electrical combined
+    if temp > 65 and v120 > 5 and ip > 100:
+        diagnosticos.append({
+            "tipo": "falha_combinada",
+            "severidade": "critico" if (temp > 75 and v120 > 7) else "aviso",
+            "titulo": "Falha Multifatorial",
+            "mensagem": f"{'CRÍTICO' if (temp > 75 and v120 > 7) else 'AVISO'}: Temperatura ({temp}°C), vibração 120Hz ({v120}) e corrente ({ip}A) simultaneamente elevados. Degradação sistêmica com risco de falha acelerada.",
+            "recomendacao": "Reduzir carga. Realizar inspeção geral incluindo termografia, análise de vibração e ensaio de isolamento. Programar parada para manutenção corretiva.",
+            "grandeza": "multivariavel",
+            "valor_atual": None,
+        })
+        grandezas_criticas.add("falha_combinada")
+
+    # Meta-diagnosis: delta_t + current + vibration combined
+    if delta_t > 15 and ip > 80 and v120 > 4:
+        sev = "critico" if (delta_t > 20 or ip > 120) else "aviso"
+        diagnosticos.append({
+            "tipo": "falha_combinada",
+            "severidade": sev,
+            "titulo": "Falha Multifatorial (Térmico-Elétrica)",
+            "mensagem": f"{'CRÍTICO' if sev == 'critico' else 'AVISO'}: Gradiente térmico ({delta_t}°C), corrente ({ip}A) e vibração 120Hz ({v120}) simultaneamente elevados. Sobrecarga com estresse termomecânico no enrolamento.",
+            "recomendacao": "Reduzir carga imediatamente. Verificar sistema de refrigeração e realizar ensaio de fator de potência do isolamento. Avaliar condição dos contatos e conexões.",
+            "grandeza": "multivariavel",
+            "valor_atual": None,
+        })
+        grandezas_criticas.add("falha_combinada")
+
+    # Accelerating temperature warning
+    temp_acelerando_val = inputs.get("temp_acelerando", 0)
+    if temp_acelerando_val and temp >= 50:
+        diagnosticos.append({
+            "tipo": "aquecimento_acelerado",
+            "severidade": "critico" if temp > 65 else "aviso",
+            "titulo": "Aquecimento Acelerado",
+            "mensagem": f"{'CRÍTICO' if temp > 65 else 'AVISO'}: Temperatura ({temp}°C) com tendência de aceleração — a taxa de subida está aumentando. Risco de superaquecimento progressivo.",
+            "recomendacao": "Monitorar continuamente. Verificar sistema de refrigeração e carga. Preparar para redução de carga se temperatura continuar acelerando.",
+            "grandeza": "multivariavel",
+            "valor_atual": temp,
+        })
+        grandezas_criticas.add("aquecimento_acelerado")
 
     return diagnosticos, sorted(grandezas_criticas)
 

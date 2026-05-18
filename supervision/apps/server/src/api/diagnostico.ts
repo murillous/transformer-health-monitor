@@ -19,12 +19,6 @@ const MAPA: Record<string, string> = {
 function mapTopico(topico: string): string {
   return MAPA[topico] ?? topico;
 }
-
-const TOPICOS = Object.entries(MAPA).reduce<Record<string, string>>((acc, [k, v]) => {
-  acc[v] = k;
-  return acc;
-}, {});
-
 const LIMIARES: Record<string, { critico: number; aviso: number }> = {
   temperatura: { critico: 85, aviso: 65 },
   delta_t: { critico: 30, aviso: 18 },
@@ -32,7 +26,6 @@ const LIMIARES: Record<string, { critico: number; aviso: number }> = {
   vibracao_240hz: { critico: 7, aviso: 3.5 },
 };
 
-// In-memory: sliding windows for trend + correlation
 const HIST_MAX = 30;
 const histTemp: { ts: number; valor: number }[] = [];
 const histDeltaT: { ts: number; valor: number }[] = [];
@@ -41,10 +34,8 @@ const histCorrenteS: { ts: number; valor: number }[] = [];
 const histVib120: { ts: number; valor: number }[] = [];
 const histVib240: { ts: number; valor: number }[] = [];
 
-// Arrhenius accumulator (in-memory)
 let vidaConsumida = 0;
 let ultimoTsVida = 0;
-
 const TEMP_REF = 80;
 
 function agingRate(tempC: number): number {
@@ -79,6 +70,27 @@ function linearRegression(pontos: { ts: number; valor: number }[]): { inclinacao
   return { inclinacao: inclinacao * 3600, r2: Math.max(0, 1 - ssRes / ssTot) };
 }
 
+// === Adaptive baseline (z-score) from DB history ===
+function getAdaptiveBaselines(): Record<string, { media: number; std: number }> {
+  const agora = new Date();
+  const inicio = new Date(agora.getTime() - 300000);
+  const dados = store.registrosPorPeriodo(inicio, agora);
+  const grupos: Record<string, number[]> = {};
+  for (const r of dados) {
+    const chave = mapTopico(r.topico);
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(r.valor);
+  }
+  const result: Record<string, { media: number; std: number }> = {};
+  for (const [chave, valores] of Object.entries(grupos)) {
+    if (valores.length < 10) continue;
+    const media = valores.reduce((a, b) => a + b, 0) / valores.length;
+    const variancia = valores.reduce((s, v) => s + (v - media) ** 2, 0) / valores.length;
+    result[chave] = { media: Math.round(media * 100) / 100, std: Math.round(Math.sqrt(variancia) * 100) / 100 };
+  }
+  return result;
+}
+
 function calcCorrelacaoCV(): number {
   if (histCorrenteP.length < 5 || histVib120.length < 5) return 0;
   const cutoff = Date.now() - 20000;
@@ -102,6 +114,7 @@ function calcTendencias(): Array<{
   unidade: string;
   inclinacao: number;
   direcao: string;
+  aceleracao: string;
 }> {
   const metricas: Array<{ hist: { ts: number; valor: number }[]; grandeza: string; label: string; unidade: string }> = [
     { hist: histTemp, grandeza: "temperatura", label: "Temperatura", unidade: "°C/h" },
@@ -116,7 +129,15 @@ function calcTendencias(): Array<{
     const trend = linearRegression(m.hist);
     const inclinacao = Math.round(trend.inclinacao * 100) / 100;
     const direcao = Math.abs(inclinacao) < 0.1 ? "estavel" : inclinacao > 0 ? "subindo" : "descendo";
-    return { grandeza: m.grandeza, label: m.label, unidade: m.unidade, inclinacao, direcao };
+    // 2nd derivative: split history, compare first-half vs second-half slopes
+    const metade = Math.floor(m.hist.length / 2);
+    const primeiraMetade = m.hist.slice(0, metade);
+    const segundaMetade = m.hist.slice(metade);
+    const incl1 = linearRegression(primeiraMetade).inclinacao;
+    const incl2 = linearRegression(segundaMetade).inclinacao;
+    const dif = incl2 - incl1;
+    const aceleracao = Math.abs(dif) < 0.05 ? "constante" : dif > 0 ? "acelerando" : "desacelerando";
+    return { grandeza: m.grandeza, label: m.label, unidade: m.unidade, inclinacao, direcao, aceleracao };
   });
 }
 
@@ -213,6 +234,7 @@ export function executarDiagnostico(): Promise<unknown> {
         vida_residual: null,
         tendencias: [],
         predicoes: [],
+        baseline: null,
       });
       return;
     }
@@ -236,17 +258,46 @@ export function executarDiagnostico(): Promise<unknown> {
     const correlacao_cv = calcCorrelacaoCV();
     const tendencias = calcTendencias();
     const predicoes = calcPredicoes();
+    const baselines = getAdaptiveBaselines();
+
+    // Harmonic ratio: vib240 / vib120 (high = harmonic distortion)
+    const v120 = leituras["vibracao_120hz"] ?? 0;
+    const v240 = leituras["vibracao_240hz"] ?? 0;
+    const harmonicRatio = v120 > 0.01 ? Math.round((v240 / v120) * 100) / 100 : 0;
+
+    // Z-scores: how many std above/below adaptive baseline
+    const zTemperatura = baselines.temperatura?.std > 0
+      ? Math.round(((leituras.temperatura ?? 0) - baselines.temperatura.media) / baselines.temperatura.std * 10) / 10
+      : 0;
+    const zDeltaT = baselines.delta_t?.std > 0
+      ? Math.round(((leituras.delta_t ?? 0) - baselines.delta_t.media) / baselines.delta_t.std * 10) / 10
+      : 0;
+    const zCorrenteP = baselines.corrente_primario?.std > 0
+      ? Math.round(((leituras["corrente_primario"] ?? 0) - baselines.corrente_primario.media) / baselines.corrente_primario.std * 10) / 10
+      : 0;
+    const zVib120 = baselines.vibracao_120hz?.std > 0
+      ? Math.round(((leituras["vibracao_120hz"] ?? 0) - baselines.vibracao_120hz.media) / baselines.vibracao_120hz.std * 10) / 10
+      : 0;
+
+    // Acceleration flags for meta-diagnosis
+    const tempAcelerando = tendencias.find(t => t.grandeza === "temperatura")?.aceleracao === "acelerando";
 
     const inputData: Record<string, number | undefined | null> = {
       timestamp: Date.now() / 1000,
       temperatura: leituras.temperatura ?? null,
       delta_t: leituras.delta_t ?? null,
-      vibracao_120hz: leituras["vibracao_120hz"] ?? null,
-      vibracao_240hz: leituras["vibracao_240hz"] ?? null,
+      vibracao_120hz: v120 || null,
+      vibracao_240hz: v240 || null,
       corrente_primario: leituras["corrente_primario"] ?? null,
       corrente_secundario: leituras["corrente_secundario"] ?? null,
       correlacao_cv: correlacao_cv > 0 ? correlacao_cv : null,
       vida_consumida: vidaConsumida > 0 ? vidaConsumida : null,
+      harmonic_ratio: harmonicRatio > 0 ? harmonicRatio : null,
+      z_temperatura: zTemperatura !== 0 ? zTemperatura : null,
+      z_delta_t: zDeltaT !== 0 ? zDeltaT : null,
+      z_corrente_p: zCorrenteP !== 0 ? zCorrenteP : null,
+      z_vib120: zVib120 !== 0 ? zVib120 : null,
+      temp_acelerando: tempAcelerando ? 1 : 0,
     };
 
     const proc = spawn("python3", [PYTHON_SCRIPT], {
@@ -274,6 +325,7 @@ export function executarDiagnostico(): Promise<unknown> {
         resultado.vida_residual = vidaResidual;
         resultado.tendencias = tendencias;
         resultado.predicoes = predicoes;
+        resultado.baseline = baselines;
         resolve(resultado);
       } catch {
         reject(new Error(`Resposta inválida do diagnóstico: ${stdout}`));

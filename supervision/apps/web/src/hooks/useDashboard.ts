@@ -68,6 +68,7 @@ export interface DiagnosticoResultado {
     unidade: string;
     inclinacao: number;
     direcao: string;
+    aceleracao: string;
   }[];
   predicoes: {
     grandeza: string;
@@ -78,6 +79,7 @@ export interface DiagnosticoResultado {
     tempo_para_alarme: number;
     alarme_em: string;
   }[];
+  baseline: Record<string, { media: number; std: number }> | null;
 }
 
 export interface AlertaHistorico {
