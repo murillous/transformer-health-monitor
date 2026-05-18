@@ -3,31 +3,36 @@
 Módulo de Inteligência e Diagnóstico Técnico
 ---------------------------------------------
 Sistema de inferência fuzzy para diagnóstico de transformadores de potência.
+Toda a análise numérica (regressão, correlação, z-score, Arrhenius) roda aqui
+via NumPy. O processo roda como daemon persistente (stdin/stdout loop).
 
-Uso:
-  cat sensores.json | python3 main.py
-
-Formato de entrada (stdin):
+Formato de entrada (stdin — uma linha JSON por ciclo):
   {
     "timestamp": 1234567890,
-    "temperatura": 55.0,         // °C       universo 0-120
-    "delta_t": 8.0,              // °C       universo 0-40
-    "vibracao_120hz": 0.08,      // g        universo 0-1.0
-    "vibracao_240hz": 0.04,      // g        universo 0-0.5
-    "corrente_primario": 2.8,    // A/Vrms   universo 0-10  (transformador pequeno)
-    "corrente_secundario": 22.0, // A/Vrms   universo 0-60
-    "inrush": 0,                 // A/Vpico  universo 0-10  (0 = ausente)
-    "correlacao_cv": 45,         // %        universo 0-100 (opcional)
-    "vida_consumida": 0.03       // fração   universo 0-1   (opcional)
+    "leituras": {
+      "temperatura": 55.0, "delta_t": 8.0,
+      "vibracao_120hz": 0.08, "vibracao_240hz": 0.04,
+      "corrente_primario": 2.8, "corrente_secundario": 22.0,
+      "inrush": 0
+    },
+    "series": {
+      "temperatura":        [[ts, val], ...],
+      "delta_t":            [[ts, val], ...],
+      "corrente_primario":  [[ts, val], ...],
+      "corrente_secundario":[[ts, val], ...],
+      "vibracao_120hz":     [[ts, val], ...],
+      "vibracao_240hz":     [[ts, val], ...]
+    }
   }
 
-Formato de saída (stdout):
+Formato de saída (stdout — uma linha JSON por ciclo):
   {
     "timestamp": 1234567890,
     "risco_operacional": { "score": 45.2, "nivel": "moderado", ... },
-    "urgencia_intervencao": { "score": 30.0, "nivel": "media", ... },
-    "diagnosticos": [ { "tipo": "...", "severidade": "...", "mensagem": "...", ... } ],
-    "grandezas_criticas": []
+    "urgencia_intervencao": { "score": 30.0, "nivel": "media" },
+    "vida_residual": { "consumido": 3.2, "taxa_atual": 0.5 },
+    "tendencias": [...], "predicoes": [...], "baseline": {...},
+    "diagnosticos": [...], "grandezas_criticas": [], "severidade_geral": "ok"
   }
 """
 
@@ -69,6 +74,171 @@ def _nivel_urgencia(score):
     if score >= 30:
         return "media"
     return "baixa"
+
+
+# ─────────────────────────────────────────────
+# Limiares físicos (espelhados do constants.ts)
+# ─────────────────────────────────────────────
+LIMIARES = {
+    "temperatura":    {"critico": 85,  "aviso": 65},
+    "delta_t":        {"critico": 30,  "aviso": 18},
+    "vibracao_120hz": {"critico": 11,  "aviso": 7},
+    "vibracao_240hz": {"critico": 7,   "aviso": 3.5},
+}
+
+# ─────────────────────────────────────────────
+# Arrhenius — estado persistente entre ciclos
+# ─────────────────────────────────────────────
+_vida_consumida: float = 0.0
+_ultimo_ts_vida: float = 0.0
+_TEMP_REF = 80.0
+
+
+def _aging_rate(temp_c: float) -> float:
+    if temp_c <= 40:
+        return 0.001
+    return float(2 ** ((temp_c - _TEMP_REF) / 10))
+
+
+def _update_arrhenius(temp_atual: float, agora: float) -> dict:
+    global _vida_consumida, _ultimo_ts_vida
+    if _ultimo_ts_vida > 0 and temp_atual > 0:
+        dt_h = (agora - _ultimo_ts_vida) / 3600
+        _vida_consumida = min(1.0, _vida_consumida + dt_h * _aging_rate(temp_atual) * 0.0002)
+    if _ultimo_ts_vida == 0 and temp_atual > 0:
+        _vida_consumida = 0.02
+    _ultimo_ts_vida = agora
+    return {
+        "consumido": round(min(100.0, _vida_consumida * 1000) / 10, 1),
+        "taxa_atual": round(_aging_rate(temp_atual) * 1000) / 1000,
+    }
+
+
+# ─────────────────────────────────────────────
+# Análise de séries temporais (NumPy)
+# series: [[timestamp_s, valor], ...]
+# ─────────────────────────────────────────────
+
+def _linear_regression(series: list) -> dict:
+    if len(series) < 4:
+        return {"inclinacao": 0.0, "r2": 0.0}
+    pts = np.array(series, dtype=float)
+    xs, ys = pts[:, 0], pts[:, 1]
+    coeffs = np.polyfit(xs, ys, 1)
+    y_hat = np.polyval(coeffs, xs)
+    ss_res = float(np.sum((ys - y_hat) ** 2))
+    ss_tot = float(np.sum((ys - np.mean(ys)) ** 2))
+    r2 = max(0.0, 1.0 - ss_res / ss_tot) if ss_tot > 1e-10 else 0.0
+    return {"inclinacao": round(float(coeffs[0]) * 3600, 4), "r2": round(r2, 4)}
+
+
+def _calc_tendencias(series: dict) -> list:
+    metricas = [
+        ("temperatura",         "Temperatura",   "°C/h"),
+        ("delta_t",             "ΔT",            "°C/h"),
+        ("corrente_primario",   "Corrente P",    "A/h"),
+        ("corrente_secundario", "Corrente S",    "A/h"),
+        ("vibracao_120hz",      "Vibração 120Hz","g/h"),
+        ("vibracao_240hz",      "Vibração 240Hz","g/h"),
+    ]
+    result = []
+    for grandeza, label, unidade in metricas:
+        pts = series.get(grandeza, [])
+        if len(pts) < 4:
+            result.append({"grandeza": grandeza, "label": label, "unidade": unidade,
+                           "inclinacao": 0.0, "direcao": "estavel", "aceleracao": "constante"})
+            continue
+        trend = _linear_regression(pts)
+        incl = trend["inclinacao"]
+        direcao = "estavel" if abs(incl) < 0.1 else ("subindo" if incl > 0 else "descendo")
+        mid = len(pts) // 2
+        dif = _linear_regression(pts[mid:])["inclinacao"] - _linear_regression(pts[:mid])["inclinacao"]
+        aceleracao = "constante" if abs(dif) < 0.05 else ("acelerando" if dif > 0 else "desacelerando")
+        result.append({"grandeza": grandeza, "label": label, "unidade": unidade,
+                       "inclinacao": round(incl, 2), "direcao": direcao, "aceleracao": aceleracao})
+    return result
+
+
+def _calc_predicoes(series: dict) -> list:
+    checks = [
+        ("temperatura", "Temperatura", LIMIARES["temperatura"]["critico"], "critico"),
+        ("temperatura", "Temperatura", LIMIARES["temperatura"]["aviso"],   "aviso"),
+        ("delta_t",     "ΔT",          LIMIARES["delta_t"]["critico"],     "critico"),
+        ("delta_t",     "ΔT",          LIMIARES["delta_t"]["aviso"],       "aviso"),
+    ]
+    result = []
+    for grandeza, label, threshold, alarme_em in checks:
+        pts = series.get(grandeza, [])
+        trend = _linear_regression(pts)
+        if trend["inclinacao"] > 0.3 and trend["r2"] > 0.3:
+            valor_atual = float(pts[-1][1]) if pts else 0.0
+            dif = threshold - valor_atual
+            if dif > 0:
+                minutos = round((dif / trend["inclinacao"]) * 60)
+                if minutos < 120:
+                    result.append({
+                        "grandeza": grandeza, "label": label,
+                        "valor_atual": valor_atual, "tendencia": "subindo",
+                        "inclinacao": round(trend["inclinacao"], 1),
+                        "tempo_para_alarme": minutos, "alarme_em": alarme_em,
+                    })
+    return result
+
+
+def _calc_correlacao_cv(series: dict) -> float:
+    pts_c = series.get("corrente_primario", [])
+    pts_v = series.get("vibracao_120hz", [])
+    if not pts_c or not pts_v:
+        return 0.0
+    cutoff = pts_c[-1][0] - 20
+    rec_c = [p[1] for p in pts_c if p[0] > cutoff]
+    rec_v = [p[1] for p in pts_v if p[0] > cutoff]
+    if len(rec_c) < 3 or len(rec_v) < 3:
+        return 0.0
+    if np.mean(rec_c) <= 3.5 or np.mean(rec_v) <= 0.12:
+        return 0.0
+    n = min(len(rec_c), len(rec_v))
+    both = sum(1 for i in range(n) if rec_c[i] > 3.5 and rec_v[i] > 0.12)
+    return float(min(100, round(both / n * 100)))
+
+
+def _get_baselines(series: dict) -> dict:
+    result = {}
+    for grandeza, pts in series.items():
+        if len(pts) < 10:
+            continue
+        vals = np.array([p[1] for p in pts], dtype=float)
+        result[grandeza] = {"media": round(float(np.mean(vals)), 2),
+                             "std":   round(float(np.std(vals)),  2)}
+    return result
+
+
+def _calc_z_scores(leituras: dict, baselines: dict) -> dict:
+    mapa = {"temperatura": "z_temperatura", "delta_t": "z_delta_t",
+            "corrente_primario": "z_corrente_p", "vibracao_120hz": "z_vib120"}
+    z = {}
+    for grandeza, chave in mapa.items():
+        bl = baselines.get(grandeza)
+        val = leituras.get(grandeza) or 0.0
+        z[chave] = round((val - bl["media"]) / bl["std"], 1) if bl and bl["std"] > 0 else 0.0
+    return z
+
+
+def _detectar_eficiencia_anomala(delta_t: float, tendencias: list):
+    t_dt  = next((t for t in tendencias if t["grandeza"] == "delta_t"), None)
+    t_cs  = next((t for t in tendencias if t["grandeza"] == "corrente_secundario"), None)
+    if not t_dt or not t_cs:
+        return None
+    if not (t_dt["inclinacao"] > 1.0 and abs(t_cs["inclinacao"]) < 1.0
+            and delta_t > LIMIARES["delta_t"]["aviso"]):
+        return None
+    return {
+        "tipo": "eficiencia_anomala", "severidade": "aviso",
+        "titulo": "Anomalia de Eficiência",
+        "mensagem": "ΔT subindo sem aumento proporcional de carga — possível perda no núcleo, conexões frouxas ou refrigeração comprometida.",
+        "recomendacao": "Inspecionar conexões/aperto das chapas do núcleo, verificar fluxo de óleo/ar de refrigeração e analisar perdas a vazio.",
+        "grandeza": "delta_t", "valor_atual": delta_t,
+    }
 
 
 def _built_system():
@@ -629,30 +799,57 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
     return diagnosticos, sorted(grandezas_criticas)
 
 
-def analisar(inputs):
-    inputs = {k: (v if v is not None else 0) for k, v in inputs.items()}
+def analisar(payload: dict) -> dict:
+    # Suporta formato novo {leituras, series} e legado {campo: valor}
+    leituras = payload.get("leituras", payload)
+    series   = payload.get("series", {})
+    ts       = payload.get("timestamp") or leituras.get("timestamp", 0)
+
+    # ── Arrhenius (estado persistente no daemon) ──────────────────────────────
+    vida_residual = _update_arrhenius(leituras.get("temperatura") or 0.0, float(ts or 0))
+
+    # ── Análise de séries (NumPy) ─────────────────────────────────────────────
+    tendencias  = _calc_tendencias(series)
+    predicoes   = _calc_predicoes(series)
+    baselines   = _get_baselines(series)
+    z_scores    = _calc_z_scores(leituras, baselines)
+    correlacao_cv = _calc_correlacao_cv(series)
+
+    v120 = leituras.get("vibracao_120hz") or 0.0
+    v240 = leituras.get("vibracao_240hz") or 0.0
+    harmonic_ratio = round(v240 / v120, 2) if v120 > 0.01 else 0.0
+
+    temp_acelerando = any(
+        t["grandeza"] == "temperatura" and t["aceleracao"] == "acelerando"
+        for t in tendencias
+    )
+
+    # ── Monta inputs para o fuzzy ─────────────────────────────────────────────
+    inputs = {k: (v if v is not None else 0) for k, v in leituras.items()}
+    inputs.update({
+        "correlacao_cv":  correlacao_cv if correlacao_cv > 0 else 0,
+        "vida_consumida": _vida_consumida,
+        "harmonic_ratio": harmonic_ratio if harmonic_ratio > 0 else 0,
+        "temp_acelerando": 1 if temp_acelerando else 0,
+        **{k: (v if v != 0 else 0) for k, v in z_scores.items()},
+    })
+
+    # ── Inferência fuzzy ──────────────────────────────────────────────────────
     resultados, fired_rules, fuzzified = SYS.evaluate(inputs)
 
-    risco = resultados.get("risco_operacional", {})
+    risco   = resultados.get("risco_operacional", {})
     urgencia = resultados.get("urgencia_intervencao", {})
-
     score_risco = risco.get("score", 0)
+    nivel = "critico" if score_risco >= 75 else "alto" if score_risco >= 50 else "moderado" if score_risco >= 25 else "baixo"
 
-    if score_risco >= 75:
-        nivel = "critico"
-    elif score_risco >= 50:
-        nivel = "alto"
-    elif score_risco >= 25:
-        nivel = "moderado"
-    else:
-        nivel = "baixo"
+    diagnosticos, grandezas_criticas_set = _gerar_diagnosticos(inputs, resultados, fired_rules)
 
-    score_urgencia = urgencia.get("score", 0)
-    nivel_urgencia = _nivel_urgencia(score_urgencia)
+    # Anomalia de eficiência (regra ΔT × carga)
+    efic = _detectar_eficiencia_anomala(leituras.get("delta_t") or 0.0, tendencias)
+    if efic:
+        diagnosticos.append(efic)
+        grandezas_criticas_set.add("delta_t")
 
-    diagnosticos, grandezas_criticas = _gerar_diagnosticos(inputs, resultados, fired_rules)
-
-    # Severidade geral = worse of all diagnostics
     sev_geral = "ok"
     for d in diagnosticos:
         if d["severidade"] == "critico":
@@ -661,23 +858,18 @@ def analisar(inputs):
         if d["severidade"] == "aviso":
             sev_geral = "aviso"
 
-    saida = {
-        "timestamp": inputs.get("timestamp"),
-        "risco_operacional": {
-            "score": score_risco,
-            "nivel": nivel,
-            "termos": risco.get("termos", {}),
-        },
-        "urgencia_intervencao": {
-            "score": score_urgencia,
-            "nivel": nivel_urgencia,
-        },
+    return {
+        "timestamp": ts,
+        "risco_operacional": {"score": score_risco, "nivel": nivel, "termos": risco.get("termos", {})},
+        "urgencia_intervencao": {"score": urgencia.get("score", 0), "nivel": _nivel_urgencia(urgencia.get("score", 0))},
+        "vida_residual": vida_residual,
+        "tendencias": tendencias,
+        "predicoes": predicoes,
+        "baseline": baselines,
         "diagnosticos": diagnosticos,
-        "grandezas_criticas": grandezas_criticas,
+        "grandezas_criticas": sorted(grandezas_criticas_set),
         "severidade_geral": sev_geral,
     }
-
-    return saida
 
 
 def main():
