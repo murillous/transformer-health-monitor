@@ -2,7 +2,7 @@ import { Router } from "express";
 import { TOPICOS_MQTT, mapearGrandeza, avaliarSeveridade, LIMITES } from "@transformer-monitor/shared";
 import { WebSocketHub } from "../ws/hub";
 import { store } from "../db/store";
-import { executarDiagnostico } from "./diagnostico";
+import { executarDiagnostico, atualizarEspectro, registrarInrush } from "./diagnostico";
 
 interface Gerador {
   base: number;
@@ -29,11 +29,23 @@ const UNIDADES: Record<string, string> = {
   [TOPICOS_MQTT.vibracao240hz]: "g",
 };
 
-function gerarValor(cfg: Gerador): number {
-  const noise = (Math.random() - 0.5) * 2 * cfg.variacao;
-  let v = cfg.base + noise;
-  if (Math.random() < cfg.spikeProb) {
-    v += cfg.spikeMag * (0.5 + Math.random());
+// Override de cenário: mescla com GERADORES enquanto ativo (até overrideUntil).
+// Usado pela rota POST /cenario pra forçar condições de falha durante demo.
+let cenarioOverride: Partial<Record<string, Partial<Gerador>>> = {};
+let cenarioUntil = 0;
+let cenarioAtivo: string | null = null;
+
+// Queue de inrush forçados (cenário inrush_severo dispara 3 em sequência).
+const inrushForcado: number[] = [];
+
+function gerarValor(cfg: Gerador, topico?: string): number {
+  // Aplica override do cenário se ativo e tópico match
+  const o = topico && Date.now() < cenarioUntil ? cenarioOverride[topico] : undefined;
+  const merged: Gerador = o ? { ...cfg, ...o } : cfg;
+  const noise = (Math.random() - 0.5) * 2 * merged.variacao;
+  let v = merged.base + noise;
+  if (Math.random() < merged.spikeProb) {
+    v += merged.spikeMag * (0.5 + Math.random());
   }
   return Math.max(0, Math.round(v * 100) / 100);
 }
@@ -97,7 +109,7 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
       const agora = new Date().toISOString();
 
       for (const [topico, cfg] of Object.entries(GERADORES)) {
-        const v = gerarValor(cfg);
+        const v = gerarValor(cfg, topico);
         valores[topico] = v;
         wsHub.broadcast({
           topico,
@@ -131,11 +143,16 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
 
       ultimasLeituras = valores;
 
-      // Inrush sintetico: spike ocasional pra demonstrar diagnostico fuzzy.
-      // ~1 a cada 40s (prob 0.025 @ tick 1s). Inrush e evento discreto — so
-      // emite quando dispara, ausente das outras leituras.
-      if (Math.random() < 0.025) {
-        const inrushVal = Math.round((1.8 + Math.random() * 2.7) * 100) / 100;
+      // Inrush sintetico: spike ocasional + queue forçada por cenário.
+      // ~1 a cada 40s natural (prob 0.025). Quando cenário inrush_severo
+      // dispara, queue força N picos em ticks consecutivos.
+      const inrushForcadoVal = inrushForcado.shift();
+      const dispararInrush = inrushForcadoVal != null || Math.random() < 0.025;
+      if (dispararInrush) {
+        const inrushVal = inrushForcadoVal != null
+          ? inrushForcadoVal
+          : Math.round((1.8 + Math.random() * 2.7) * 100) / 100;
+        registrarInrush();  // alimenta calcTaxaInrush (eventos / 5 min)
         wsHub.broadcast({
           topico: TOPICOS_MQTT.inrushPrimario,
           ts: Math.floor(Date.now() / 1000),
@@ -168,13 +185,15 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
         unidade: "",
       });
 
+      const espectro = gerarEspectro(
+        valores[TOPICOS_MQTT.vibracao120hz],
+        valores[TOPICOS_MQTT.vibracao240hz]
+      );
+      atualizarEspectro(espectro);  // alimenta calcTHD/calcRatioHarmonicas
       wsHub.broadcast({
         topico: "transformador/vibracao/espectro",
         ts: Math.floor(Date.now() / 1000),
-        espectro: gerarEspectro(
-          valores[TOPICOS_MQTT.vibracao120hz],
-          valores[TOPICOS_MQTT.vibracao240hz]
-        ),
+        espectro,
       });
 
       executarDiagnostico()
@@ -216,6 +235,70 @@ export function createSimuladorRouter(wsHub: WebSocketHub): Router {
       intervaloOnda = null;
     }
     res.json({ ok: true });
+  });
+
+  // Aplica cenário de falha — sobrepõe GERADORES por N segundos.
+  // Tipos: sobreaquecimento | sobrecarga | vibracao_critica | inrush_severo |
+  //        falha_eletromecanica | normal (limpa override)
+  router.post("/cenario", (req, res) => {
+    const { tipo, duracao_s = 30 } = req.body ?? {};
+    cenarioOverride = {};
+    cenarioUntil = Date.now() + Math.max(5, Math.min(duracao_s, 300)) * 1000;
+    cenarioAtivo = tipo;
+
+    switch (tipo) {
+      case "sobreaquecimento":
+        cenarioOverride[TOPICOS_MQTT.temperaturaNucleo] = { base: 92, variacao: 2, spikeProb: 0, spikeMag: 0 };
+        cenarioOverride[TOPICOS_MQTT.deltaT] = { base: 28, variacao: 1, spikeProb: 0, spikeMag: 0 };
+        break;
+      case "sobrecarga":
+        cenarioOverride[TOPICOS_MQTT.correntePrimario] = { base: 6.8, variacao: 0.3, spikeProb: 0, spikeMag: 0 };
+        cenarioOverride[TOPICOS_MQTT.correnteSecundario] = { base: 50, variacao: 2, spikeProb: 0, spikeMag: 0 };
+        cenarioOverride[TOPICOS_MQTT.temperaturaNucleo] = { base: 78, variacao: 2, spikeProb: 0, spikeMag: 0 };
+        break;
+      case "vibracao_critica":
+        cenarioOverride[TOPICOS_MQTT.vibracao120hz] = { base: 0.52, variacao: 0.03, spikeProb: 0, spikeMag: 0 };
+        cenarioOverride[TOPICOS_MQTT.vibracao240hz] = { base: 0.28, variacao: 0.02, spikeProb: 0, spikeMag: 0 };
+        break;
+      case "inrush_severo":
+        // Queue: 4 inrushes consecutivos com pico crescente
+        inrushForcado.push(2.5, 3.2, 3.8, 4.2);
+        break;
+      case "falha_eletromecanica":
+        // Combo: corrente alta + vibração alta + temperatura subindo lento
+        cenarioOverride[TOPICOS_MQTT.correntePrimario] = { base: 5.5, variacao: 0.4, spikeProb: 0.1, spikeMag: 1 };
+        cenarioOverride[TOPICOS_MQTT.vibracao120hz] = { base: 0.35, variacao: 0.05, spikeProb: 0.1, spikeMag: 0.1 };
+        cenarioOverride[TOPICOS_MQTT.vibracao240hz] = { base: 0.18, variacao: 0.03, spikeProb: 0, spikeMag: 0 };
+        cenarioOverride[TOPICOS_MQTT.temperaturaNucleo] = { base: 75, variacao: 3, spikeProb: 0.05, spikeMag: 5 };
+        break;
+      case "normal":
+      case "limpar":
+        cenarioUntil = 0;
+        cenarioAtivo = null;
+        break;
+      default:
+        cenarioUntil = 0;
+        cenarioAtivo = null;
+        return res.status(400).json({ erro: `Cenário desconhecido: ${tipo}` });
+    }
+
+    res.json({
+      ok: true,
+      tipo: cenarioAtivo,
+      ate_ms: cenarioUntil,
+      duracao_s,
+    });
+  });
+
+  router.get("/cenario/atual", (_req, res) => {
+    if (Date.now() >= cenarioUntil) {
+      cenarioAtivo = null;
+    }
+    res.json({
+      tipo: cenarioAtivo,
+      ate_ms: cenarioUntil,
+      restante_s: Math.max(0, Math.floor((cenarioUntil - Date.now()) / 1000)),
+    });
   });
 
   return router;

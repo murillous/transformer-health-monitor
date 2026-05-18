@@ -9,6 +9,10 @@ import WaveformChart from "@/components/WaveformChart";
 import AlertasResumo from "@/components/AlertasResumo";
 import DiagnosticoPanel from "@/components/DiagnosticoPanel";
 import DiagnosticoResumo from "@/components/DiagnosticoResumo";
+import HealthGauge from "@/components/HealthGauge";
+import PredicoesBanner from "@/components/PredicoesBanner";
+import SimulacaoCenarios from "@/components/SimulacaoCenarios";
+import Timeline from "@/components/Timeline";
 import Relatorio from "./Relatorio";
 import Alertas from "./Alertas";
 import { Button } from "@/components/ui/button";
@@ -78,6 +82,8 @@ export default function Dashboard() {
               </span>
             </TabsTrigger>
             <TabsTrigger value="diagnostico" className="flex-none">Diagnóstico</TabsTrigger>
+            <TabsTrigger value="eventos" className="flex-none">Eventos</TabsTrigger>
+            <TabsTrigger value="simulacao" className="flex-none">Simulação</TabsTrigger>
             <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
           </TabsList>
           <div className="absolute right-6 flex items-center gap-2">
@@ -112,7 +118,18 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-3">
+          <PredicoesBanner
+            predicoes={diagnostico?.predicoes ?? []}
+            onNavigate={() => setTabAtual("diagnostico")}
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <HealthGauge saude={diagnostico?.saude ?? null} />
+            <DiagnosticoResumo diagnostico={diagnostico} onNavigate={() => setTabAtual("diagnostico")} />
+            <AlertasResumo ultimosValores={ultimosValores} onNavigate={() => setTabAtual("alertas")} />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
             {metricas.map((m) => (
               <MetricCard
                 key={m.topico}
@@ -121,8 +138,6 @@ export default function Dashboard() {
                 leitura={ultimosValores[m.topico] ?? null}
               />
             ))}
-            <DiagnosticoResumo diagnostico={diagnostico} onNavigate={() => setTabAtual("diagnostico")} />
-            <AlertasResumo ultimosValores={ultimosValores} onNavigate={() => setTabAtual("alertas")} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -194,6 +209,18 @@ export default function Dashboard() {
 
         <TabsContent value="alertas">
           <Alertas />
+        </TabsContent>
+
+        <TabsContent value="eventos" className="space-y-4">
+          <Timeline
+            historicoAlertas={historicoAlertas}
+            historicoRisco={historicoRisco}
+            diagnostico={diagnostico}
+          />
+        </TabsContent>
+
+        <TabsContent value="simulacao" className="space-y-4">
+          <SimulacaoCenarios />
         </TabsContent>
 
         <TabsContent value="relatorio">

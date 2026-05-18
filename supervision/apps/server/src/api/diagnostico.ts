@@ -83,6 +83,21 @@ function mapTopico(topico: string): string {
 }
 const LIMIAR_DELTA_T_AVISO = 18;
 
+const TOPICOS = Object.entries(MAPA).reduce<Record<string, string>>((acc, [k, v]) => {
+  acc[v] = k;
+  return acc;
+}, {});
+
+const LIMIARES: Record<string, { critico: number; aviso: number }> = {
+  temperatura: { critico: 85, aviso: 70 },
+  delta_t: { critico: 30, aviso: 18 },
+  vibracao_120hz: { critico: 0.45, aviso: 0.20 },
+  vibracao_240hz: { critico: 0.25, aviso: 0.10 },
+  corrente_primario: { critico: 6.0, aviso: 4.0 },
+  corrente_secundario: { critico: 45, aviso: 30 },
+};
+
+// In-memory: sliding windows for trend + correlation
 const HIST_MAX = 30;
 const histTemp: { ts: number; valor: number }[] = [];
 const histDeltaT: { ts: number; valor: number }[] = [];
@@ -90,6 +105,42 @@ const histCorrenteP: { ts: number; valor: number }[] = [];
 const histCorrenteS: { ts: number; valor: number }[] = [];
 const histVib120: { ts: number; valor: number }[] = [];
 const histVib240: { ts: number; valor: number }[] = [];
+
+// Cache do último espectro FFT (alimentado pelo subscriber MQTT e simulador).
+// Usado pra calcular razão harmônica e THD como inputs fuzzy.
+let ultimoEspectro: { freq: number; amplitude: number }[] = [];
+export function atualizarEspectro(bins: { freq: number; amplitude: number }[]): void {
+  if (Array.isArray(bins)) ultimoEspectro = bins;
+}
+
+function calcRatioHarmonicas(): number {
+  const v120 = ultimoEspectro.find((b) => b.freq === 120)?.amplitude ?? 0;
+  const v240 = ultimoEspectro.find((b) => b.freq === 240)?.amplitude ?? 0;
+  if (v120 < 0.01) return 0;
+  return Math.min(2, v240 / v120);
+}
+
+function calcTHD(): number {
+  const v120 = ultimoEspectro.find((b) => b.freq === 120)?.amplitude ?? 0;
+  if (v120 < 0.01) return 0;
+  const harms = ultimoEspectro.filter((b) => [240, 360, 480, 600].includes(b.freq));
+  const soma = Math.sqrt(harms.reduce((s, b) => s + b.amplitude * b.amplitude, 0));
+  return Math.min(1, soma / v120);
+}
+
+// Eventos de inrush nos últimos 5 min — feed do subscriber e simulador.
+const eventosInrush: number[] = [];
+export function registrarInrush(): void {
+  const agora = Date.now();
+  eventosInrush.push(agora);
+  const cutoff = agora - 5 * 60_000;
+  while (eventosInrush.length > 0 && eventosInrush[0] < cutoff) {
+    eventosInrush.shift();
+  }
+}
+function calcTaxaInrush(): number {
+  return eventosInrush.length;
+}
 
 // Throttle do alarme de eficiência — a regra roda no Python, o save no DB fica aqui
 let ultimoAlarmeEficienciaMs = 0;
@@ -157,6 +208,8 @@ export function executarDiagnostico(): Promise<unknown> {
         // Inrush é evento discreto — null quando ausente nos últimos 15s
         inrush:               leituras["inrush"]            ?? null,
       },
+      espectro: ultimoEspectro,
+      taxa_inrush: calcTaxaInrush(),
       series: {
         temperatura:          histToSeries(histTemp),
         delta_t:              histToSeries(histDeltaT),

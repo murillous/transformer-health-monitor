@@ -4,6 +4,39 @@ Guia completo para preparar a máquina e rodar o pipeline **Proteus → Dashboar
 
 ---
 
+## ⚡ Atalho — script único de boot
+
+Para ambiente já configurado (Node, Python, Mosquitto, com0com instalados), um único comando sobe tudo:
+
+```powershell
+# Windows — default COM_PORT=COM5 (par com0com padrão)
+.\scripts\start.ps1
+.\scripts\start.ps1 -NoBridge        # sem bridge (simulador interno ou ESP32)
+.\scripts\start.ps1 -ComPort COM7    # COM diferente
+```
+
+```bash
+# Linux/macOS
+COM_PORT=/dev/ttyUSB0 ./scripts/start.sh
+./scripts/start.sh --no-bridge
+./scripts/start.sh --com-port=/tmp/ttyV1
+```
+
+O script:
+- Verifica Node, npm, Python no PATH
+- Roda `npm install` na `supervision/` se `node_modules` ausente
+- Roda `pip install` em `apps/intelligence/` e `tools/serial_bridge/` se imports falham
+- Checa TCP `:1883` (avisa se Mosquitto não responde — não tenta subir)
+- Sobe `bridge.py` em background (se COM_PORT setado)
+- Sobe `npm run dev` em foreground (logs do server + Vite direto na console)
+- Ctrl+C derruba bridge + server + web
+
+Mosquitto **não** sobe pelo script — siga o passo 4 abaixo pra instalar e habilitar como serviço.
+
+Se já tem o ambiente preparado, pode pular pros passos 5–9 (com0com, COMPIM, ponte) abaixo só uma vez, depois usar o script atalho daí em diante.
+
+---
+
 ## Visão geral do pipeline
 
 ```
@@ -350,6 +383,8 @@ A stack `supervision/` continua funcionando exatamente igual — o subscriber MQ
 ---
 
 ## Ordem de subida (toda vez)
+
+> Atalho: `.\scripts\start.ps1` (Windows) ou `./scripts/start.sh` (Linux) faz os passos 2 e 4 automaticamente.
 
 1. Mosquitto (Windows: serviço automático; Linux: `sudo systemctl start mosquitto`)
 2. Ponte: `python tools/serial_bridge/bridge.py --port COM5`

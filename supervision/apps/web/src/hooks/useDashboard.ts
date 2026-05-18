@@ -42,6 +42,10 @@ interface PontoGrafico {
 
 export interface DiagnosticoResultado {
   timestamp?: number;
+  saude?: {
+    score: number;
+    nivel: string;
+  };
   risco_operacional: {
     score: number;
     nivel: string;
@@ -84,6 +88,16 @@ export interface DiagnosticoResultado {
     alarme_em: string;
   }[];
   baseline: Record<string, { media: number; std: number }> | null;
+  // Novos campos (Iteração 3)
+  correlacao_cv?: number;
+  ratio_harmonicas?: number;
+  thd?: number;
+  taxa_inrush?: number;
+  fired_rules?: {
+    antecedents: { var: string; term: string }[];
+    consequents: { var: string; term: string }[];
+    firing: number;
+  }[];
 }
 
 export interface AlertaHistorico {
