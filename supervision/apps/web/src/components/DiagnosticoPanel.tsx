@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, TrendingUpDown, Gauge } from "lucide-react";
+import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, TrendingUpDown, Gauge, Activity, ListTree } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, CartesianGrid } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
@@ -115,6 +115,11 @@ const GRANDEZAS: Record<string, string> = {
   vibracao_240hz: "Vibração 240Hz",
   corrente_primario: "Corrente Primário",
   corrente_secundario: "Corrente Secundário",
+  inrush: "Inrush",
+  ratio_harmonicas: "Razão Harmônica",
+  thd: "THD",
+  taxa_inrush: "Taxa de Inrush",
+  tendencia_temperatura: "Tendência Temperatura",
 };
 
 function fmtGrandeza(g: string): string {
@@ -143,7 +148,11 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
     );
   }
 
-  const { risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp, vida_residual, tendencias, predicoes } = diagnostico;
+  const {
+    risco_operacional, urgencia_intervencao, diagnosticos, severidade_geral, timestamp,
+    vida_residual, tendencias, predicoes,
+    correlacao_cv, ratio_harmonicas, thd, taxa_inrush, fired_rules,
+  } = diagnostico;
   const sevGeralLED =
     severidade_geral === "critico" ? "bg-red-500 shadow-red-500/50" :
     severidade_geral === "aviso" ? "bg-yellow-500 shadow-yellow-500/50" :
@@ -223,6 +232,28 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
           </div>
         </div>
 
+        {(correlacao_cv != null && correlacao_cv > 0) || (ratio_harmonicas != null && ratio_harmonicas > 0.1) || (thd != null && thd > 0.05) || (taxa_inrush != null && taxa_inrush > 0) ? (
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Activity className="h-3 w-3" /> Indicadores Combinados
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {correlacao_cv != null && correlacao_cv > 0 && (
+                <IndicadorBar label="Correlação Corrente × Vibração 120Hz" valor={correlacao_cv} max={100} sufixo="%" tooltip="Co-elevação de corrente e vibração nos últimos 20s" />
+              )}
+              {ratio_harmonicas != null && ratio_harmonicas > 0.1 && (
+                <IndicadorBar label="Razão Harmônica v240/v120" valor={ratio_harmonicas} max={2} sufixo="" thresholdAviso={0.6} thresholdCritico={1.0} tooltip="Razão alta indica conexões frouxas ou desalinhamento do núcleo" />
+              )}
+              {thd != null && thd > 0.05 && (
+                <IndicadorBar label="THD Espectro Vibracional" valor={thd} max={1} sufixo="" thresholdAviso={0.3} thresholdCritico={0.5} tooltip="Total Harmonic Distortion das harmônicas vs fundamental" />
+              )}
+              {taxa_inrush != null && taxa_inrush > 0 && (
+                <IndicadorBar label="Taxa Inrush (5min)" valor={taxa_inrush} max={10} sufixo=" evts" thresholdAviso={2} thresholdCritico={5} tooltip="Eventos de inrush nos últimos 5 minutos" />
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {predicoes.length > 0 && (
           <div className="space-y-2">
             <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
@@ -272,8 +303,73 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
             Todos os parâmetros dentro da normalidade. Nenhuma intervenção necessária.
           </div>
         )}
+
+        {fired_rules && fired_rules.length > 0 && (
+          <details className="border-t pt-2 mt-2">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
+              <ListTree className="h-3 w-3" />
+              Regras ativadas ({fired_rules.length}) — clique para detalhar
+            </summary>
+            <ul className="mt-2 space-y-1 text-[10px] font-mono">
+              {fired_rules.map((r, i) => (
+                <li key={`rule-${i}`} className="p-1.5 rounded bg-muted/40 leading-relaxed">
+                  <span className="text-blue-500 font-semibold">SE</span>{" "}
+                  {r.antecedents.map((a, j) => (
+                    <span key={j}>
+                      {j > 0 && <span className="text-muted-foreground"> E </span>}
+                      <span>{a.var}</span>=
+                      <span className="text-orange-500 font-medium">{a.term}</span>
+                    </span>
+                  ))}
+                  {" "}<span className="text-blue-500 font-semibold">→</span>{" "}
+                  {r.consequents.map((c, j) => (
+                    <span key={j}>
+                      {j > 0 && <span className="text-muted-foreground">, </span>}
+                      <span>{c.var}</span>=
+                      <span className="text-purple-500 font-medium">{c.term}</span>
+                    </span>
+                  ))}
+                  <span className="ml-2 text-muted-foreground">
+                    (firing: {r.firing.toFixed(2)})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function IndicadorBar({
+  label, valor, max, sufixo = "", thresholdAviso, thresholdCritico, tooltip,
+}: {
+  label: string;
+  valor: number;
+  max: number;
+  sufixo?: string;
+  thresholdAviso?: number;
+  thresholdCritico?: number;
+  tooltip?: string;
+}) {
+  const pct = Math.min(100, (valor / max) * 100);
+  const cor =
+    thresholdCritico != null && valor >= thresholdCritico ? "bg-red-500" :
+    thresholdAviso != null && valor >= thresholdAviso ? "bg-yellow-500" :
+    "bg-green-500";
+  return (
+    <div className="p-2 rounded-md bg-muted/30" title={tooltip}>
+      <div className="text-[10px] text-muted-foreground mb-1 truncate">{label}</div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-500 ${cor}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-xs font-medium tabular-nums">
+          {valor.toFixed(valor < 10 ? 2 : 0)}{sufixo}
+        </span>
+      </div>
+    </div>
   );
 }
 

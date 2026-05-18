@@ -161,6 +161,51 @@ def _built_system():
         .add_term("alta", RightEdge(0.6, 0.8))
     )
 
+    # --- Input: Temperature Trend (-5 a +10 °C/h) ---
+    # Slope da regressao linear das ultimas 30 amostras (calcTendencias TS).
+    # Permite antecipacao: temp morna + subindo -> moderado mesmo antes do limite.
+    tendencia_temp = (
+        FuzzyVariable("tendencia_temperatura", -5, 10)
+        .add_term("descendo", LeftEdge(-1, 0))
+        .add_term("estavel", Trapezoid(-0.5, 0, 1.5, 3))
+        .add_term("subindo", RightEdge(2, 5))
+    )
+
+    # --- Input: Delta-T Trend (-3 a +6 °C/h) ---
+    tendencia_delta_t = (
+        FuzzyVariable("tendencia_delta_t", -3, 6)
+        .add_term("descendo", LeftEdge(-0.5, 0))
+        .add_term("estavel", Trapezoid(-0.3, 0, 1, 2))
+        .add_term("subindo", RightEdge(1.5, 3))
+    )
+
+    # --- Input: Harmonic Ratio v240/v120 (0-2) ---
+    # Razao alta indica conexoes frouxas das chapas / desalinhamento do nucleo.
+    ratio_harm = (
+        FuzzyVariable("ratio_harmonicas", 0, 2)
+        .add_term("normal", LeftEdge(0.3, 0.5))
+        .add_term("elevada", Trapezoid(0.4, 0.6, 0.9, 1.1))
+        .add_term("alta", RightEdge(1.0, 1.4))
+    )
+
+    # --- Input: THD do espectro vibracional (0-1) ---
+    # Total Harmonic Distortion das harmonicas 240/360/480/600 vs 120Hz fundamental.
+    thd = (
+        FuzzyVariable("thd", 0, 1)
+        .add_term("baixa", LeftEdge(0.15, 0.25))
+        .add_term("media", Trapezoid(0.20, 0.30, 0.45, 0.55))
+        .add_term("alta", RightEdge(0.50, 0.70))
+    )
+
+    # --- Input: Inrush frequency (eventos / 5 min) ---
+    # Energizacoes repetidas estressam o nucleo e podem indicar falta intermitente.
+    taxa_inrush = (
+        FuzzyVariable("taxa_inrush", 0, 10)
+        .add_term("rara", LeftEdge(1, 2))
+        .add_term("frequente", Trapezoid(1.5, 3, 5, 7))
+        .add_term("excessiva", RightEdge(5, 8))
+    )
+
     # --- Output: Operational Risk (0-100) ---
     risco = (
         FuzzyVariable("risco_operacional", 0, 100)
@@ -178,7 +223,12 @@ def _built_system():
         .add_term("alta", RightEdge(55, 75))
     )
 
-    for var in [temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, inrush, correlacao_cv, vida_consumida, risco, urgencia]:
+    for var in [
+        temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, inrush,
+        correlacao_cv, vida_consumida,
+        tendencia_temp, tendencia_delta_t, ratio_harm, thd, taxa_inrush,
+        risco, urgencia,
+    ]:
         fsis.add_variable(var)
 
     R = lambda a, c, w=1.0: fsis.add_rule(a, c, w)
@@ -233,6 +283,29 @@ def _built_system():
     R([("inrush", "presente"), ("temperatura", "quente")], [("risco_operacional", "critico"), ("urgencia_intervencao", "alta")], 0.9)
     R([("inrush", "presente"), ("corrente_primario", "alta")], [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
     R([("inrush", "presente")], [("risco_operacional", "moderado")], 0.5)
+
+    # === Trend-based anticipation ===
+    # Permite escalada antes do valor atual cruzar limiar.
+    R([("temperatura", "morna"), ("tendencia_temperatura", "subindo")],
+      [("risco_operacional", "moderado"), ("urgencia_intervencao", "media")], 0.7)
+    R([("temperatura", "quente"), ("tendencia_temperatura", "subindo")],
+      [("risco_operacional", "critico"), ("urgencia_intervencao", "alta")], 1.0)
+    R([("delta_t", "elevado"), ("tendencia_delta_t", "subindo")],
+      [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+
+    # === FFT harmonics — core faults ===
+    R([("ratio_harmonicas", "alta")],
+      [("risco_operacional", "alto"), ("urgencia_intervencao", "media")], 0.8)
+    R([("ratio_harmonicas", "elevada"), ("vibracao_120hz", "moderada")],
+      [("risco_operacional", "moderado")], 0.6)
+    R([("thd", "alta")],
+      [("risco_operacional", "alto")], 0.7)
+
+    # === Inrush correlation expanded ===
+    R([("taxa_inrush", "excessiva")],
+      [("risco_operacional", "critico"), ("urgencia_intervencao", "alta")], 0.9)
+    R([("inrush", "presente"), ("temperatura", "morna"), ("tendencia_temperatura", "subindo")],
+      [("risco_operacional", "alto")], 0.8)
 
     # === Normal operation ===
     R(
@@ -508,6 +581,84 @@ def _gerar_diagnosticos(inputs, resultados, fired_rules):
         })
         grandezas_criticas.add("vida_util")
 
+    # Harmonics / core faults
+    ratio = inputs.get("ratio_harmonicas", 0)
+    thd_val = inputs.get("thd", 0)
+    if ratio > 1.0:
+        diagnosticos.append({
+            "tipo": "harmonicas_nucleo",
+            "severidade": "critico",
+            "titulo": "Falha no Núcleo (Razão Harmônica)",
+            "mensagem": f"CRÍTICO: Razão v240/v120 = {ratio:.2f}. Indica conexões frouxas das chapas ou desalinhamento do núcleo magnético.",
+            "recomendacao": "Inspecionar aperto das chapas do núcleo, verificar paralelismo das laminações e realizar ensaio de impedância de curto-circuito.",
+            "grandeza": "ratio_harmonicas",
+            "valor_atual": round(ratio, 2),
+        })
+        grandezas_criticas.add("ratio_harmonicas")
+    elif ratio > 0.6:
+        diagnosticos.append({
+            "tipo": "harmonicas_elevada",
+            "severidade": "aviso",
+            "titulo": "Razão Harmônica Elevada",
+            "mensagem": f"AVISO: Razão v240/v120 = {ratio:.2f}. Conteúdo harmônico acima do esperado para operação saudável.",
+            "recomendacao": "Monitorar tendência. Programar inspeção mecânica das laminações.",
+            "grandeza": "ratio_harmonicas",
+            "valor_atual": round(ratio, 2),
+        })
+        grandezas_criticas.add("ratio_harmonicas")
+
+    if thd_val > 0.5:
+        diagnosticos.append({
+            "tipo": "thd_alta",
+            "severidade": "aviso",
+            "titulo": "Distorção Harmônica Elevada",
+            "mensagem": f"AVISO: THD do espectro vibracional = {thd_val:.2f}. Sugere fluxo magnético irregular ou contribuição de cargas não-lineares.",
+            "recomendacao": "Avaliar qualidade de energia da rede, identificar cargas não-lineares e inspecionar estado das chapas.",
+            "grandeza": "thd",
+            "valor_atual": round(thd_val, 2),
+        })
+        grandezas_criticas.add("thd")
+
+    # Inrush frequency
+    taxa = inputs.get("taxa_inrush", 0)
+    if taxa > 5:
+        diagnosticos.append({
+            "tipo": "inrush_frequente",
+            "severidade": "critico",
+            "titulo": "Taxa de Inrush Excessiva",
+            "mensagem": f"CRÍTICO: {int(taxa)} eventos de inrush em 5 minutos. Energizações repetidas estressam o núcleo e podem indicar falta intermitente da rede.",
+            "recomendacao": "Investigar instabilidade da rede de alimentação, verificar relés de proteção e contatos de chaveamento.",
+            "grandeza": "taxa_inrush",
+            "valor_atual": int(taxa),
+        })
+        grandezas_criticas.add("taxa_inrush")
+    elif taxa > 2:
+        diagnosticos.append({
+            "tipo": "inrush_recorrente",
+            "severidade": "aviso",
+            "titulo": "Inrush Recorrente",
+            "mensagem": f"AVISO: {int(taxa)} eventos de inrush em 5 minutos. Frequência acima do esperado para operação normal.",
+            "recomendacao": "Monitorar estabilidade da alimentação. Avaliar uso de soft-start ou relé de pré-inserção.",
+            "grandeza": "taxa_inrush",
+            "valor_atual": int(taxa),
+        })
+        grandezas_criticas.add("taxa_inrush")
+
+    # Trend anticipation
+    tendencia_t = inputs.get("tendencia_temperatura", 0)
+    if temp > 60 and tendencia_t > 2.0:
+        minutos_estim = max(1, int((85 - temp) / max(tendencia_t / 60, 0.01)))
+        diagnosticos.append({
+            "tipo": "temperatura_subindo",
+            "severidade": "aviso",
+            "titulo": "Temperatura em Elevação Rápida",
+            "mensagem": f"AVISO: Temperatura atual {temp}°C subindo a {tendencia_t:.1f}°C/h. Tendência indica alarme crítico em ~{minutos_estim} min se mantida.",
+            "recomendacao": "Reduzir carga preventivamente e verificar refrigeração antes de atingir limite crítico.",
+            "grandeza": "tendencia_temperatura",
+            "valor_atual": round(tendencia_t, 2),
+        })
+        grandezas_criticas.add("tendencia_temperatura")
+
     return diagnosticos, sorted(grandezas_criticas)
 
 
@@ -543,8 +694,43 @@ def analisar(inputs):
         if d["severidade"] == "aviso":
             sev_geral = "aviso"
 
+    # Health index (0-100, higher = better). Penaliza risco, urgência, vida.
+    vida_pct = (inputs.get("vida_consumida") or 0) * 100
+    penalty = score_risco * 0.55 + score_urgencia * 0.25 + vida_pct * 0.20
+    saude_score = max(0.0, min(100.0, 100.0 - penalty))
+    if saude_score >= 80:
+        saude_nivel = "excelente"
+    elif saude_score >= 60:
+        saude_nivel = "bom"
+    elif saude_score >= 40:
+        saude_nivel = "atencao"
+    elif saude_score >= 20:
+        saude_nivel = "ruim"
+    else:
+        saude_nivel = "critico"
+
+    # Filtra regras com firing > 0.1, top 15 ordenadas por intensidade.
+    rules_resumidas = sorted(
+        (
+            {
+                "antecedents": [{"var": a, "term": t} for a, t in r["antecedents"]],
+                "consequents": [{"var": a, "term": t} for a, t in r["consequents"]],
+                "firing": round(r["firing"], 3),
+            }
+            for r in fired_rules
+            if r.get("firing", 0) > 0.1
+        ),
+        key=lambda r: -r["firing"],
+    )[:15]
+
+    correlacao_cv_val = inputs.get("correlacao_cv") or 0
+
     saida = {
         "timestamp": inputs.get("timestamp"),
+        "saude": {
+            "score": round(saude_score, 1),
+            "nivel": saude_nivel,
+        },
         "risco_operacional": {
             "score": score_risco,
             "nivel": nivel,
@@ -557,6 +743,11 @@ def analisar(inputs):
         "diagnosticos": diagnosticos,
         "grandezas_criticas": grandezas_criticas,
         "severidade_geral": sev_geral,
+        "correlacao_cv": correlacao_cv_val,
+        "ratio_harmonicas": inputs.get("ratio_harmonicas") or 0,
+        "thd": inputs.get("thd") or 0,
+        "taxa_inrush": inputs.get("taxa_inrush") or 0,
+        "fired_rules": rules_resumidas,
     }
 
     return saida

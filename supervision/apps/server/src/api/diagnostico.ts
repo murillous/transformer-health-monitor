@@ -28,10 +28,12 @@ const TOPICOS = Object.entries(MAPA).reduce<Record<string, string>>((acc, [k, v]
 }, {});
 
 const LIMIARES: Record<string, { critico: number; aviso: number }> = {
-  temperatura: { critico: 85, aviso: 65 },
+  temperatura: { critico: 85, aviso: 70 },
   delta_t: { critico: 30, aviso: 18 },
-  vibracao_120hz: { critico: 11, aviso: 7 },
-  vibracao_240hz: { critico: 7, aviso: 3.5 },
+  vibracao_120hz: { critico: 0.45, aviso: 0.20 },
+  vibracao_240hz: { critico: 0.25, aviso: 0.10 },
+  corrente_primario: { critico: 6.0, aviso: 4.0 },
+  corrente_secundario: { critico: 45, aviso: 30 },
 };
 
 // In-memory: sliding windows for trend + correlation
@@ -42,6 +44,42 @@ const histCorrenteP: { ts: number; valor: number }[] = [];
 const histCorrenteS: { ts: number; valor: number }[] = [];
 const histVib120: { ts: number; valor: number }[] = [];
 const histVib240: { ts: number; valor: number }[] = [];
+
+// Cache do último espectro FFT (alimentado pelo subscriber MQTT e simulador).
+// Usado pra calcular razão harmônica e THD como inputs fuzzy.
+let ultimoEspectro: { freq: number; amplitude: number }[] = [];
+export function atualizarEspectro(bins: { freq: number; amplitude: number }[]): void {
+  if (Array.isArray(bins)) ultimoEspectro = bins;
+}
+
+function calcRatioHarmonicas(): number {
+  const v120 = ultimoEspectro.find((b) => b.freq === 120)?.amplitude ?? 0;
+  const v240 = ultimoEspectro.find((b) => b.freq === 240)?.amplitude ?? 0;
+  if (v120 < 0.01) return 0;
+  return Math.min(2, v240 / v120);
+}
+
+function calcTHD(): number {
+  const v120 = ultimoEspectro.find((b) => b.freq === 120)?.amplitude ?? 0;
+  if (v120 < 0.01) return 0;
+  const harms = ultimoEspectro.filter((b) => [240, 360, 480, 600].includes(b.freq));
+  const soma = Math.sqrt(harms.reduce((s, b) => s + b.amplitude * b.amplitude, 0));
+  return Math.min(1, soma / v120);
+}
+
+// Eventos de inrush nos últimos 5 min — feed do subscriber e simulador.
+const eventosInrush: number[] = [];
+export function registrarInrush(): void {
+  const agora = Date.now();
+  eventosInrush.push(agora);
+  const cutoff = agora - 5 * 60_000;
+  while (eventosInrush.length > 0 && eventosInrush[0] < cutoff) {
+    eventosInrush.shift();
+  }
+}
+function calcTaxaInrush(): number {
+  return eventosInrush.length;
+}
 
 // Arrhenius accumulator (in-memory)
 let vidaConsumida = 0;
@@ -185,16 +223,34 @@ function calcPredicoes(): Array<{
     alarme_em: string;
   }> = [];
 
-  const checks: Array<{ hist: { ts: number; valor: number }[]; grandeza: string; label: string; threshold: number; alarme_em: string }> = [
-    { hist: histTemp, grandeza: "temperatura", label: "Temperatura", threshold: LIMIARES.temperatura.critico, alarme_em: "critico" },
-    { hist: histTemp, grandeza: "temperatura", label: "Temperatura", threshold: LIMIARES.temperatura.aviso, alarme_em: "aviso" },
-    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT", threshold: LIMIARES.delta_t.critico, alarme_em: "critico" },
-    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT", threshold: LIMIARES.delta_t.aviso, alarme_em: "aviso" },
+  // Cada check tem slopeMin proporcional à escala da grandeza (vib120 sobe em
+  // décimos de g/h, corrente em A/h, temperatura em dezenas de °C/h).
+  const checks: Array<{
+    hist: { ts: number; valor: number }[];
+    grandeza: string;
+    label: string;
+    threshold: number;
+    alarme_em: string;
+    slopeMin: number;
+  }> = [
+    { hist: histTemp, grandeza: "temperatura", label: "Temperatura", threshold: LIMIARES.temperatura.critico, alarme_em: "critico", slopeMin: 0.3 },
+    { hist: histTemp, grandeza: "temperatura", label: "Temperatura", threshold: LIMIARES.temperatura.aviso, alarme_em: "aviso", slopeMin: 0.3 },
+    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT", threshold: LIMIARES.delta_t.critico, alarme_em: "critico", slopeMin: 0.2 },
+    { hist: histDeltaT, grandeza: "delta_t", label: "ΔT", threshold: LIMIARES.delta_t.aviso, alarme_em: "aviso", slopeMin: 0.2 },
+    { hist: histCorrenteP, grandeza: "corrente_primario", label: "Corrente P", threshold: LIMIARES.corrente_primario.critico, alarme_em: "critico", slopeMin: 0.1 },
+    { hist: histCorrenteP, grandeza: "corrente_primario", label: "Corrente P", threshold: LIMIARES.corrente_primario.aviso, alarme_em: "aviso", slopeMin: 0.1 },
+    { hist: histCorrenteS, grandeza: "corrente_secundario", label: "Corrente S", threshold: LIMIARES.corrente_secundario.critico, alarme_em: "critico", slopeMin: 0.5 },
+    { hist: histCorrenteS, grandeza: "corrente_secundario", label: "Corrente S", threshold: LIMIARES.corrente_secundario.aviso, alarme_em: "aviso", slopeMin: 0.5 },
+    { hist: histVib120, grandeza: "vibracao_120hz", label: "Vibração 120Hz", threshold: LIMIARES.vibracao_120hz.critico, alarme_em: "critico", slopeMin: 0.02 },
+    { hist: histVib120, grandeza: "vibracao_120hz", label: "Vibração 120Hz", threshold: LIMIARES.vibracao_120hz.aviso, alarme_em: "aviso", slopeMin: 0.02 },
   ];
 
+  // Dedup: só emite a 1ª predição (mais próxima do limiar) por grandeza.
+  const grandezasVistas = new Set<string>();
   for (const c of checks) {
+    if (grandezasVistas.has(c.grandeza)) continue;
     const trend = linearRegression(c.hist);
-    if (trend.inclinacao > 0.3 && trend.r2 > 0.3) {
+    if (trend.inclinacao > c.slopeMin && trend.r2 > 0.3) {
       const valorAtual = c.hist.length > 0 ? c.hist[c.hist.length - 1].valor : 0;
       const dif = c.threshold - valorAtual;
       if (dif > 0) {
@@ -206,10 +262,11 @@ function calcPredicoes(): Array<{
             label: c.label,
             valor_atual: valorAtual,
             tendencia: "subindo",
-            inclinacao: Math.round(trend.inclinacao * 10) / 10,
+            inclinacao: Math.round(trend.inclinacao * 100) / 100,
             tempo_para_alarme: minutos,
             alarme_em: c.alarme_em,
           });
+          grandezasVistas.add(c.grandeza);
         }
       }
     }
@@ -283,6 +340,12 @@ export function executarDiagnostico(): Promise<unknown> {
     const tendencias = calcTendencias();
     const predicoes = calcPredicoes();
 
+    // Mapeia slopes calculados em calcTendencias() pra inputs fuzzy do Python.
+    // Permite regras antecipatorias (temp morna + subindo -> moderado).
+    const tendenciaMap = Object.fromEntries(
+      tendencias.map((t) => [t.grandeza, t.inclinacao])
+    );
+
     const inputData: Record<string, number | undefined | null> = {
       timestamp: Date.now() / 1000,
       temperatura: leituras.temperatura ?? null,
@@ -296,6 +359,12 @@ export function executarDiagnostico(): Promise<unknown> {
       inrush: leituras["inrush"] ?? null,
       correlacao_cv: correlacao_cv > 0 ? correlacao_cv : null,
       vida_consumida: vidaConsumida > 0 ? vidaConsumida : null,
+      // Novos inputs (Iteração 3): tendência, harmônicas, taxa inrush.
+      tendencia_temperatura: tendenciaMap.temperatura ?? null,
+      tendencia_delta_t: tendenciaMap.delta_t ?? null,
+      ratio_harmonicas: calcRatioHarmonicas() || null,
+      thd: calcTHD() || null,
+      taxa_inrush: calcTaxaInrush() || null,
     };
 
     const proc = spawn(PYTHON_BIN, [PYTHON_SCRIPT], {

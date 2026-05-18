@@ -6,6 +6,7 @@ import {
   TOPICOS_MQTT,
 } from "@transformer-monitor/shared";
 import { store } from "../db/store";
+import { atualizarEspectro, registrarInrush } from "../api/diagnostico";
 
 export class MQTTSubscriber extends EventEmitter {
   private client: mqtt.MqttClient | null = null;
@@ -54,6 +55,8 @@ export class MQTTSubscriber extends EventEmitter {
         }
 
         if (topico === TOPICOS_MQTT.vibracaoEspectro && Array.isArray(parsed.espectro)) {
+          // Cacheia espectro pra calcRatioHarmonicas/calcTHD no diagnostico.
+          atualizarEspectro(parsed.espectro);
           this.emit("leitura", {
             topico,
             ts: Number(parsed.ts ?? Math.floor(Date.now() / 1000)),
@@ -79,6 +82,11 @@ export class MQTTSubscriber extends EventEmitter {
         }
 
         const data = leituraSchema.parse(parsed);
+
+        // Registra evento de inrush pra calcTaxaInrush (taxa em 5 min).
+        if (topico === TOPICOS_MQTT.inrushPrimario && data.valor > 0) {
+          registrarInrush();
+        }
 
         store.push({
           timestamp: new Date().toISOString(),
