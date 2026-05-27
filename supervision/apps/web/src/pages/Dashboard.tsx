@@ -23,7 +23,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 export default function Dashboard() {
   const [tabAtual, setTabAtual] = useState("painel");
   const { leituras, ultimosValores, acquiring, setAcquiring, processarLeitura, resetAlarmes, historicoAlertas, espectro, historicoEspectro, diagnostico, historicoRisco, ondaPrimario, ondaSecundario } = useDashboard();
-  useWebSocket(processarLeitura);
+  const wsConectado = useWebSocket(processarLeitura);
 
   const toggleAquisicao = useCallback(async () => {
     if (acquiring) {
@@ -86,6 +86,12 @@ export default function Dashboard() {
             <TabsTrigger value="simulacao" className="flex-none">Simulação</TabsTrigger>
             <TabsTrigger value="relatorio" className="flex-none">Relatório</TabsTrigger>
           </TabsList>
+          <div className="absolute right-6 flex items-center gap-2">
+            <span className={`flex items-center gap-1 text-xs ${wsConectado ? "text-green-500" : "text-red-500"}`}>
+              <span className={`inline-block h-2 w-2 rounded-full ${wsConectado ? "bg-green-500" : "bg-red-500 animate-pulse"}`} />
+              {wsConectado ? "Conectado" : "Desconectado"}
+            </span>
+          </div>
         </div>
       </header>
 

@@ -3,10 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from "@/components/ui/pagination";
-import { History, Download, CheckCircle2, RotateCcw } from "lucide-react";
+import { History, Download, CheckCircle2, RotateCcw, CalendarIcon } from "lucide-react";
 import * as XLSX from "xlsx";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 const LABELS: Record<string, string> = {
   "transformador/nucleo/temperatura": "Temperatura do Núcleo",
@@ -34,11 +39,15 @@ interface Paginacao {
 
 type Formato = "csv" | "xlsx";
 type FiltroSev = "" | "aviso" | "critico";
-type FiltroPeriodo = "" | "1h" | "6h" | "hoje" | "7d" | "30d";
+type FiltroPeriodo = "" | "1h" | "6h" | "hoje" | "7d" | "30d" | "customizado";
 
-function periodoParams(periodo: FiltroPeriodo): { inicio?: string; fim?: string } {
-  const fim = new Date();
+function periodoParams(periodo: FiltroPeriodo, customInicio?: Date, customFim?: Date): { inicio?: string; fim?: string } {
+  const fim = customFim ?? new Date();
   if (!periodo) return {};
+  if (periodo === "customizado") {
+    if (!customInicio) return {};
+    return { inicio: customInicio.toISOString(), fim: fim.toISOString() };
+  }
   let inicio: Date;
   switch (periodo) {
     case "1h": inicio = new Date(fim.getTime() - 3600000); break;
@@ -51,6 +60,18 @@ function periodoParams(periodo: FiltroPeriodo): { inicio?: string; fim?: string 
   return { inicio: inicio.toISOString(), fim: fim.toISOString() };
 }
 
+function labelPeriodo(p: FiltroPeriodo): string {
+  switch (p) {
+    case "1h": return "Última hora";
+    case "6h": return "Últimas 6 horas";
+    case "hoje": return "Hoje";
+    case "7d": return "Últimos 7 dias";
+    case "30d": return "Últimos 30 dias";
+    case "customizado": return "Customizado";
+    default: return "Todo período";
+  }
+}
+
 export default function Alertas() {
   const [dados, setDados] = useState<AlarmeRow[]>([]);
   const [pag, setPag] = useState<Paginacao>({ total: 0, page: 1, limit: 20, totalPages: 0 });
@@ -60,6 +81,8 @@ export default function Alertas() {
   const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodo>("");
   const [limitePag, setLimitePag] = useState(20);
   const [filtroStatus, setFiltroStatus] = useState<"todas" | "ativo" | "resolvido">("todas");
+  const [customInicio, setCustomInicio] = useState<Date | undefined>();
+  const [customFim, setCustomFim] = useState<Date | undefined>();
 
   const filtroStatusFn = (row: AlarmeRow): boolean => {
     if (filtroStatus === "todas") return true;
@@ -67,14 +90,14 @@ export default function Alertas() {
     return filtroStatus === "ativo" ? row.ts >= limite : row.ts < limite;
   };
 
-  const carregar = useCallback(async (page: number, sev: FiltroSev, periodo: FiltroPeriodo, limit: number) => {
+  const carregar = useCallback(async (page: number, sev: FiltroSev, periodo: FiltroPeriodo, limit: number, cInicio?: Date, cFim?: Date) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("limit", String(limit));
       if (sev) params.set("severidade", sev);
-      const p = periodoParams(periodo);
+      const p = periodoParams(periodo, cInicio, cFim);
       if (p.inicio) params.set("inicio", p.inicio);
       if (p.fim) params.set("fim", p.fim);
 
@@ -90,10 +113,10 @@ export default function Alertas() {
   }, []);
 
   useEffect(() => {
-    carregar(1, filtroSev, filtroPeriodo, limitePag);
-  }, [carregar, filtroSev, filtroPeriodo, limitePag]);
+    carregar(1, filtroSev, filtroPeriodo, limitePag, customInicio, customFim);
+  }, [carregar, filtroSev, filtroPeriodo, limitePag, customInicio, customFim]);
 
-  const mudarPagina = (p: number) => carregar(p, filtroSev, filtroPeriodo, limitePag);
+  const mudarPagina = (p: number) => carregar(p, filtroSev, filtroPeriodo, limitePag, customInicio, customFim);
 
   const handleExport = () => {
     const nome = `alertas-transformador-${new Date().toISOString().slice(0, 10)}`;
@@ -205,7 +228,7 @@ export default function Alertas() {
               </Button>
             </>
           )}
-          <Button variant="ghost" size="sm" onClick={() => carregar(1, filtroSev, filtroPeriodo, limitePag)}>
+          <Button variant="ghost" size="sm" onClick={() => carregar(1, filtroSev, filtroPeriodo, limitePag, customInicio, customFim)}>
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -246,9 +269,7 @@ export default function Alertas() {
               <span className="text-xs font-medium text-muted-foreground">Período</span>
               <Select value={filtroPeriodo} onValueChange={(v) => setFiltroPeriodo(v as FiltroPeriodo)}>
                 <SelectTrigger className="w-40">
-                  <SelectValue>
-                    {filtroPeriodo === "1h" ? "Última hora" : filtroPeriodo === "6h" ? "Últimas 6 horas" : filtroPeriodo === "hoje" ? "Hoje" : filtroPeriodo === "7d" ? "Últimos 7 dias" : filtroPeriodo === "30d" ? "Últimos 30 dias" : "Todo período"}
-                  </SelectValue>
+                  <SelectValue>{labelPeriodo(filtroPeriodo)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Todo período</SelectItem>
@@ -257,9 +278,88 @@ export default function Alertas() {
                   <SelectItem value="hoje">Hoje</SelectItem>
                   <SelectItem value="7d">Últimos 7 dias</SelectItem>
                   <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                  <SelectItem value="customizado">Customizado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {filtroPeriodo === "customizado" && (
+              <div className="flex items-end gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Início</span>
+                  <Popover>
+                    <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-44 justify-start gap-2 font-normal")}>
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {customInicio ? format(customInicio, "dd/MM/yyyy HH:mm", { locale: ptBR }) : "Selecionar"}
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0 gap-0" sideOffset={4}>
+                      <Calendar
+                        mode="single"
+                        selected={customInicio}
+                        onSelect={(d) => {
+                          if (d) {
+                            const atual = customInicio ?? new Date();
+                            d.setHours(atual.getHours(), atual.getMinutes());
+                            setCustomInicio(d);
+                          }
+                        }}
+                        className="[--cell-size:--spacing(10)] w-full"
+                      />
+                      <div className="flex items-center gap-2 border-t border-border px-3 py-2 bg-background">
+                        <span className="text-xs text-muted-foreground">Hora:</span>
+                        <input
+                          type="time"
+                          value={customInicio ? format(customInicio, "HH:mm") : "00:00"}
+                          onChange={(e) => {
+                            const [h, m] = e.target.value.split(":").map(Number);
+                            const d = customInicio ?? new Date();
+                            d.setHours(h, m, 0, 0);
+                            setCustomInicio(new Date(d));
+                          }}
+                          className="h-7 border-0 rounded-none bg-transparent px-1 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Fim</span>
+                  <Popover>
+                    <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-44 justify-start gap-2 font-normal")}>
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {customFim ? format(customFim, "dd/MM/yyyy HH:mm", { locale: ptBR }) : "Selecionar"}
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0 gap-0" sideOffset={4}>
+                      <Calendar
+                        mode="single"
+                        selected={customFim}
+                        onSelect={(d) => {
+                          if (d) {
+                            const atual = customFim ?? new Date();
+                            d.setHours(atual.getHours(), atual.getMinutes());
+                            setCustomFim(d);
+                          }
+                        }}
+                        className="[--cell-size:--spacing(10)] w-full"
+                      />
+                      <div className="flex items-center gap-2 border-t border-border px-3 py-2 bg-background">
+                        <span className="text-xs text-muted-foreground">Hora:</span>
+                        <input
+                          type="time"
+                          value={customFim ? format(customFim, "HH:mm") : "23:59"}
+                          onChange={(e) => {
+                            const [h, m] = e.target.value.split(":").map(Number);
+                            const d = customFim ?? new Date();
+                            d.setHours(h, m, 0, 0);
+                            setCustomFim(new Date(d));
+                          }}
+                          className="h-7 border-0 rounded-none bg-transparent px-1 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
           </div>
 
           {loading ? (

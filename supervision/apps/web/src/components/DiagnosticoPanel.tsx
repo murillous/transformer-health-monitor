@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { AlertTriangle, AlertCircle, Brain, Lightbulb, Wrench, Clock, TrendingUp, TrendingDown, TrendingUpDown, Gauge, Activity, ListTree } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, CartesianGrid } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ReferenceLine, CartesianGrid } from "recharts";
 import type { DiagnosticoResultado } from "@/hooks/useDashboard";
 
 type Props = {
@@ -80,8 +81,12 @@ function Sparkline({ historico }: { historico: { ts: number; score: number }[] }
 
   const data = historico.map((p) => ({ t: new Date(p.ts * 1000).toLocaleTimeString("pt-BR"), s: p.score }));
 
+  const chartConfig = {
+    s: { label: "Risco", color: "#8884d8" },
+  } satisfies ChartConfig;
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
       <LineChart data={data} margin={{ top: 2, right: 2, left: -20, bottom: 0 }}>
         <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="hsl(var(--muted-foreground) / 0.15)" />
         <XAxis dataKey="t" hide />
@@ -89,14 +94,12 @@ function Sparkline({ historico }: { historico: { ts: number; score: number }[] }
         <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={1} />
         <ReferenceLine y={50} stroke="#f59e0b" strokeDasharray="3 3" strokeWidth={1} />
         <ReferenceLine y={25} stroke="#22c55e" strokeDasharray="3 3" strokeWidth={1} />
-        <Tooltip
-          contentStyle={{ fontSize: 10, padding: "2px 6px" }}
-          labelFormatter={(label) => label}
-          formatter={(value) => [Number(value).toFixed(1), "Risco"]}
+        <ChartTooltip
+          content={<ChartTooltipContent labelFormatter={(label) => label} />}
         />
         <Line type="monotone" dataKey="s" stroke="#8884d8" strokeWidth={1.5} dot={false} isAnimationActive={false} />
       </LineChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }
 
@@ -217,14 +220,20 @@ export default function DiagnosticoPanel({ diagnostico, historicoRisco = [] }: P
             {tendencias.map((t, i) => {
               const Seta = t.direcao === "subindo" ? TrendingUp : t.direcao === "descendo" ? TrendingDown : TrendingUpDown;
               const corSeta = t.direcao === "subindo" ? "text-red-400" : t.direcao === "descendo" ? "text-green-400" : "text-muted-foreground";
+              const badgeAcel = t.aceleracao === "acelerando" ? "text-[9px] text-red-500 font-semibold ml-1" : "text-[9px] text-muted-foreground ml-1";
               return (
                 <div key={`tend-${i}`} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
                   <Seta className={`h-4 w-4 ${corSeta}`} />
                   <div className="text-xs">
                     <span className="font-medium">{t.label}</span>
                     <span className="ml-2 text-muted-foreground">
-                      {t.direcao === "estavel" ? "estável" : `${Math.abs(t.inclinacao).toFixed(2)} ${t.unidade} ${t.direcao === "subindo" ? "↑" : "↓"}`}
+                      {t.direcao === "estavel" ? "estável" : `${Math.abs(t.inclinacao).toFixed(2)} ${t.unidade}`}
                     </span>
+                    {t.aceleracao !== "constante" && (
+                      <span className={badgeAcel}>
+                        {t.aceleracao === "acelerando" ? "⚡acelerando" : "⇣desacelerando"}
+                      </span>
+                    )}
                   </div>
                 </div>
               );

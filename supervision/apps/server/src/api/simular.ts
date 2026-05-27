@@ -51,17 +51,17 @@ function gerarValor(cfg: Gerador, topico?: string): number {
 }
 
 function gerarEspectro(vib120: number, vib240: number): { freq: number; amplitude: number }[] {
-  const bins = [60, 120, 180, 240, 300, 360, 420, 480, 540, 600];
-  const pico120 = vib120;
-  const pico240 = vib240;
+  // Mesmos 5 bins que o firmware publica (main.cpp FREQS_HARMONICAS)
+  const bins = [120, 240, 360, 480, 600];
   return bins.map((freq) => {
     let amp: number;
-    if (freq === 120) amp = pico120;
-    else if (freq === 240) amp = pico240;
-    else if (freq === 60) amp = pico120 * 0.08 + Math.random() * 0.01;
-    else if (freq === 180) amp = pico120 * 0.15 + Math.random() * 0.02;
-    else if (freq === 300) amp = pico240 * 0.2 + Math.random() * 0.02;
-    else amp = Math.max(0, (pico120 + pico240) * 0.05 * (1 - (freq - 360) / 600) + Math.random() * 0.01);
+    if (freq === 120) amp = vib120;
+    else if (freq === 240) amp = vib240;
+    else {
+      // Harmônicas superiores decaem com a ordem (1/n típico em transformadores)
+      const ordem = freq / 120;
+      amp = Math.max(0, vib120 * (0.4 / ordem) + Math.random() * 0.01);
+    }
     return { freq, amplitude: Math.round(amp * 1000) / 1000 };
   });
 }
