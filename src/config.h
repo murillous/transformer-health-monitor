@@ -19,6 +19,8 @@
     constexpr uint8_t  PINO_DS18B20 = 4;     // GPIO4
     constexpr uint8_t  PINO_SCT_P   = 34;    // GPIO34 (ADC1_CH6)
     constexpr uint8_t  PINO_SCT_S   = 35;    // GPIO35 (ADC1_CH7)
+    constexpr uint8_t  PINO_I2C_SDA = 21;    // GPIO21 — MPU9250 SDA
+    constexpr uint8_t  PINO_I2C_SCL = 22;    // GPIO22 — MPU9250 SCL
     constexpr float    VREF         = 3.3f;
     constexpr float    ADC_RES      = 4095.0f;
     constexpr float    BIAS         = 1.65f;
@@ -28,6 +30,8 @@
     constexpr uint8_t  PINO_DS18B20 = 4;
     constexpr uint8_t  PINO_SCT_P   = A0;
     constexpr uint8_t  PINO_SCT_S   = A1;
+    constexpr uint8_t  PINO_I2C_SDA = A4;    // fixo pelo hardware do UNO — MPU6050 SDA
+    constexpr uint8_t  PINO_I2C_SCL = A5;    // fixo pelo hardware do UNO — MPU6050 SCL
     constexpr float    VREF         = 5.0f;
     constexpr float    ADC_RES      = 1023.0f;
     constexpr float    BIAS         = 2.5f;

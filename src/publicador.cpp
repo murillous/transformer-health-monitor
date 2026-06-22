@@ -17,10 +17,10 @@
     // pra placeholders quando vars de ambiente nao estao setadas — compila
     // pra teste mas nao conecta em rede real.
     #ifndef WIFI_SSID_BUILD
-    #define WIFI_SSID_BUILD "SUA_REDE"
+    #define WIFI_SSID_BUILD "MICROESP"
     #endif
     #ifndef WIFI_PASS_BUILD
-    #define WIFI_PASS_BUILD "SUA_SENHA"
+    #define WIFI_PASS_BUILD "microcontrol"
     #endif
     #ifndef MQTT_BROKER_BUILD
     #define MQTT_BROKER_BUILD "192.168.1.100"

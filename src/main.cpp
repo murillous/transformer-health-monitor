@@ -37,7 +37,11 @@ static float ondaBuf[N_AMOSTRAS_ONDA];
 void setup()
 {
     Serial.begin(BAUD_SERIAL);
-    Wire.begin();
+#if defined(ESP32)
+    Wire.begin(PINO_I2C_SDA, PINO_I2C_SCL);
+#else
+    Wire.begin();  // AVR: pinos SDA/SCL fixos em hardware (A4/A5), Wire.begin() não aceita argumentos
+#endif
 
     publicador::iniciar();
     mpu6050::iniciar();

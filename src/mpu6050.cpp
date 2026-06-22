@@ -1,6 +1,43 @@
 #include "mpu6050.h"
 #include <Wire.h>
 
+#if defined(ESP32)
+#include <MPU9250-DMP.h>
+
+namespace {
+static MPU9250_DMP imu;
+} // namespace anônimo
+
+namespace mpu6050 {
+
+bool iniciar()
+{
+    if (imu.begin() != INV_SUCCESS) return false;
+
+    imu.setSensors(INV_XYZ_GYRO | INV_XYZ_ACCEL);
+    imu.setAccelFSR(2);     // ±2g — mesma faixa do MPU6050 anterior (16384 LSB/g)
+    imu.setGyroFSR(250);    // ±250dps — mesma faixa do MPU6050 anterior (131 LSB/dps)
+    return true;
+}
+
+Leitura ler()
+{
+    Leitura r{};
+    if (imu.update(UPDATE_ACCEL | UPDATE_GYRO) != INV_SUCCESS) return r;
+
+    r.ax = imu.calcAccel(imu.ax);
+    r.ay = imu.calcAccel(imu.ay);
+    r.az = imu.calcAccel(imu.az);
+    r.gx = imu.calcGyro(imu.gx);
+    r.gy = imu.calcGyro(imu.gy);
+    r.gz = imu.calcGyro(imu.gz);
+    return r;
+}
+
+} // namespace mpu6050
+
+#else
+
 namespace {
 
 constexpr uint8_t MPU_ADDR          = 0x68;
@@ -56,3 +93,5 @@ Leitura ler()
 }
 
 } // namespace mpu6050
+
+#endif
