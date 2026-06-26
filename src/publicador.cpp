@@ -23,7 +23,7 @@
     #define WIFI_PASS_BUILD "microcontrol"
     #endif
     #ifndef MQTT_BROKER_BUILD
-    #define MQTT_BROKER_BUILD "192.168.1.100"
+    #define MQTT_BROKER_BUILD "10.116.70.149"
     #endif
 
     constexpr const char* WIFI_SSID     = WIFI_SSID_BUILD;
