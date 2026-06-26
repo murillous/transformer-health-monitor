@@ -1,10 +1,4 @@
-    for var in [
-        temperatura, delta_t, vib120, vib240, corrente_p, corrente_s, inrush,
-        correlacao_cv, vida_consumida,
-        harmonic_ratio, z_temperatura, z_delta_t, temp_acelerando,
-        tendencia_temp, tendencia_delta_t, ratio_harm, thd, taxa_inrush,
-        risco, urgencia,
-    ]:#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Módulo de Inteligência e Diagnóstico Técnico
 ---------------------------------------------
@@ -366,6 +360,7 @@ def _built_system():
         FuzzyVariable("temp_acelerando", 0, 1)
         .add_term("nao", LeftEdge(0.3, 0.6))
         .add_term("sim", RightEdge(0.4, 0.7))
+    )
 
     # --- Input: Temperature Trend (-5 a +10 °C/h) ---
     # Slope da regressao linear das ultimas 30 amostras (calcTendencias TS).
@@ -1075,6 +1070,7 @@ def analisar(payload: dict) -> dict:
         "taxa_inrush": inputs.get("taxa_inrush") or 0,
         "fired_rules": rules_resumidas,
     }
+    return saida
 
 
 def main():
