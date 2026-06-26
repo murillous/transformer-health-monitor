@@ -34,6 +34,10 @@
     constexpr unsigned long INTERVALO_RECONEXAO_MS = 5000UL;
     static unsigned long ultima_tentativa_mqtt_ms = 0;
     static unsigned long ultima_tentativa_wifi_ms = 0;
+
+    // Estado anterior pra logar apenas transicoes (evita spam a cada loop).
+    static bool wifi_estava_conectado = false;
+    static bool mqtt_estava_conectado = false;
 #endif
 
 namespace publicador {
@@ -44,6 +48,15 @@ void iniciar()
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     mqtt.setBufferSize(512);   // espectro JSON com 5 harmônicas cabe folgado
+
+    // Log de boot: confirma com quais credenciais/broker o firmware foi
+    // compilado — pega SSID errado ou IP de broker errado de cara.
+    Serial.print(F("[NET] WiFi conectando a "));
+    Serial.println(WIFI_SSID);
+    Serial.print(F("[NET] Broker alvo "));
+    Serial.print(MQTT_BROKER);
+    Serial.print(':');
+    Serial.println(MQTT_PORT);
 #else
     // No Arduino o Serial já foi inicializado no setup()
 #endif
@@ -197,6 +210,10 @@ void manter()
     const unsigned long agora_ms = millis();
 
     if (WiFi.status() != WL_CONNECTED) {
+        if (wifi_estava_conectado) {
+            wifi_estava_conectado = false;
+            Serial.println(F("[NET] WiFi caiu — reconectando"));
+        }
         // Reconexao throttled — WiFi.reconnect() pode bloquear brevemente
         // durante associacao, mas nao espera handshake completo.
         if (agora_ms - ultima_tentativa_wifi_ms >= INTERVALO_RECONEXAO_MS) {
@@ -207,10 +224,31 @@ void manter()
         return;
     }
 
+    if (!wifi_estava_conectado) {
+        wifi_estava_conectado = true;
+        Serial.print(F("[NET] WiFi conectado, IP: "));
+        Serial.println(WiFi.localIP());
+    }
+
     if (!mqtt.connected()) {
+        if (mqtt_estava_conectado) {
+            mqtt_estava_conectado = false;
+            Serial.println(F("[NET] MQTT caiu"));
+        }
         if (agora_ms - ultima_tentativa_mqtt_ms >= INTERVALO_RECONEXAO_MS) {
             ultima_tentativa_mqtt_ms = agora_ms;
-            mqtt.connect(MQTT_CLIENTE);
+            if (mqtt.connect(MQTT_CLIENTE)) {
+                mqtt_estava_conectado = true;
+                Serial.print(F("[NET] MQTT conectado em "));
+                Serial.print(MQTT_BROKER);
+                Serial.print(':');
+                Serial.println(MQTT_PORT);
+            } else {
+                // rc do PubSubClient: -4..-1 erro de rede/timeout,
+                // 1..5 recusa do broker (protocolo/cliente/auth).
+                Serial.print(F("[NET] MQTT falhou, rc="));
+                Serial.println(mqtt.state());
+            }
         }
         return;
     }
