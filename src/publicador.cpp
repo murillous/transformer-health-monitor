@@ -16,19 +16,24 @@
     // Credenciais via build flags (-D no platformio.ini env:esp32). Fallback
     // pra placeholders quando vars de ambiente nao estao setadas — compila
     // pra teste mas nao conecta em rede real.
+    // platformio.ini passa -DWIFI_SSID_BUILD="${sysenv.WIFI_SSID}" SEMPRE.
+    // Com a env var vazia isso vira "" — macro DEFINIDA porem vazia, entao
+    // #ifndef nao pega (testa existencia, nao conteudo). sizeof do literal
+    // resolve: "" tem sizeof 1 (so o \0), string real tem sizeof > 1. Assim a
+    // env var vence quando setada e o fallback vale quando vazia/ausente.
     #ifndef WIFI_SSID_BUILD
-    #define WIFI_SSID_BUILD "MICROESP"
+    #define WIFI_SSID_BUILD ""
     #endif
     #ifndef WIFI_PASS_BUILD
-    #define WIFI_PASS_BUILD "microcontrol"
+    #define WIFI_PASS_BUILD ""
     #endif
     #ifndef MQTT_BROKER_BUILD
-    #define MQTT_BROKER_BUILD "10.116.70.149"
+    #define MQTT_BROKER_BUILD ""
     #endif
 
-    constexpr const char* WIFI_SSID     = WIFI_SSID_BUILD;
-    constexpr const char* WIFI_PASS     = WIFI_PASS_BUILD;
-    constexpr const char* MQTT_BROKER   = MQTT_BROKER_BUILD;
+    constexpr const char* WIFI_SSID   = (sizeof(WIFI_SSID_BUILD)   > 1) ? WIFI_SSID_BUILD   : "MICROESP";
+    constexpr const char* WIFI_PASS   = (sizeof(WIFI_PASS_BUILD)   > 1) ? WIFI_PASS_BUILD   : "microcontrol";
+    constexpr const char* MQTT_BROKER = (sizeof(MQTT_BROKER_BUILD) > 1) ? MQTT_BROKER_BUILD : "10.116.70.149";
     constexpr uint16_t    MQTT_PORT     = 1883;
     constexpr const char* MQTT_CLIENTE  = "transformador-01";
     constexpr unsigned long INTERVALO_RECONEXAO_MS = 5000UL;
